@@ -1,0 +1,5 @@
+/target
+/data
+.env
+.DS_Store
+/exports

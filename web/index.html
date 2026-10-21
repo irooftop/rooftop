@@ -1,0 +1,578 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
+<title>iRoof.top</title>
+<meta name="color-scheme" content="light dark">
+<meta name="referrer" content="no-referrer">
+<meta name="robots" content="noindex, nofollow">
+<meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0f1419" media="(prefers-color-scheme: dark)">
+<link rel="icon" href="/favicon.ico" sizes="16x16 32x32 48x48">
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<link rel="stylesheet" href="/app.css">
+</head>
+<body>
+<svg xmlns="http://www.w3.org/2000/svg" width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
+<defs>
+<symbol id="i-settings" viewBox="0 0 24 24"><path d="M19.24 11.09L21.48 11.33A9.5 9.5 0 0 1 21.48 12.67L19.24 12.91A7.3 7.3 0 0 1 17.77 16.47L19.18 18.23A9.5 9.5 0 0 1 18.23 19.18L16.47 17.77A7.3 7.3 0 0 1 12.91 19.24L12.67 21.48A9.5 9.5 0 0 1 11.33 21.48L11.09 19.24A7.3 7.3 0 0 1 7.53 17.77L5.77 19.18A9.5 9.5 0 0 1 4.82 18.23L6.23 16.47A7.3 7.3 0 0 1 4.76 12.91L2.52 12.67A9.5 9.5 0 0 1 2.52 11.33L4.76 11.09A7.3 7.3 0 0 1 6.23 7.53L4.82 5.77A9.5 9.5 0 0 1 5.77 4.82L7.53 6.23A7.3 7.3 0 0 1 11.09 4.76L11.33 2.52A9.5 9.5 0 0 1 12.67 2.52L12.91 4.76A7.3 7.3 0 0 1 16.47 6.23L18.23 4.82A9.5 9.5 0 0 1 19.18 5.77L17.77 7.53A7.3 7.3 0 0 1 19.24 11.09Z"/><circle cx="12" cy="12" r="3"/></symbol>
+<symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2.5v2M12 19.5v2M5.3 5.3l1.4 1.4M17.3 17.3l1.4 1.4M2.5 12h2M19.5 12h2M5.3 18.7l1.4-1.4M17.3 6.7l1.4-1.4"/></symbol>
+<symbol id="i-moon" viewBox="0 0 24 24"><path d="M20.5 13.5A8.5 8.5 0 1 1 10.5 3.5a6.8 6.8 0 0 0 10 10z"/></symbol>
+<symbol id="i-auto" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 3.5a8.5 8.5 0 0 1 0 17z" fill="currentColor"/></symbol>
+<symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+<symbol id="i-upload" viewBox="0 0 24 24"><path d="M12 15V4.5M7.5 9 12 4.5 16.5 9M4.5 14.5v3a2.5 2.5 0 0 0 2.5 2.5h10a2.5 2.5 0 0 0 2.5-2.5v-3"/></symbol>
+<symbol id="i-back" viewBox="0 0 24 24"><path d="M19 12H5.5M11.5 18l-6-6 6-6"/></symbol>
+<symbol id="i-chat" viewBox="0 0 24 24"><path d="M12 4c4.97 0 9 3.36 9 7.5S16.97 19 12 19c-1.08 0-2.12-.16-3.08-.45L4.5 20l1.1-3.3C3.9 15.4 3 13.5 3 11.5 3 7.36 7.03 4 12 4z"/></symbol>
+<symbol id="i-nudge" viewBox="0 0 24 24"><path d="M12 4c4.97 0 9 3.36 9 7.5S16.97 19 12 19c-1.08 0-2.12-.16-3.08-.45L4.5 20l1.1-3.3C3.9 15.4 3 13.5 3 11.5 3 7.36 7.03 4 12 4z"/><circle cx="8.4" cy="11.5" r="1.15" fill="currentColor" stroke="none"/><circle cx="12" cy="11.5" r="1.15" fill="currentColor" stroke="none"/><circle cx="15.6" cy="11.5" r="1.15" fill="currentColor" stroke="none"/></symbol>
+<symbol id="i-refresh" viewBox="0 0 24 24"><path d="M20 12a8 8 0 1 1-2.34-5.66L20 8.67M20 4v4.67h-4.67"/></symbol>
+<symbol id="i-edit" viewBox="0 0 24 24"><path d="M14.5 6.5l3 3M4.5 19.5l.9-4.1L15.6 5.2a2.1 2.1 0 0 1 3 0l.2.2a2.1 2.1 0 0 1 0 3L8.6 18.6z"/></symbol>
+<symbol id="i-braces" viewBox="0 0 24 24"><path d="M8 4C6 4 5 5 5 7v3c0 1.2-.8 2-2 2 1.2 0 2 .8 2 2v3c0 2 1 3 3 3M16 4c2 0 3 1 3 3v3c0 1.2.8 2 2 2-1.2 0-2 .8-2 2v3c0 2-1 3-3 3"/></symbol>
+<symbol id="i-trash" viewBox="0 0 24 24"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12M9 7V4.5A.5.5 0 0 1 9.5 4h5a.5.5 0 0 1 .5.5V7"/></symbol>
+<symbol id="i-more" viewBox="0 0 24 24"><circle cx="12" cy="5.5" r="1.7" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.7" fill="currentColor" stroke="none"/><circle cx="12" cy="18.5" r="1.7" fill="currentColor" stroke="none"/></symbol>
+<symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v5.5"/><circle cx="12" cy="7.8" r="1.2" fill="currentColor" stroke="none"/></symbol>
+<symbol id="i-chev-left" viewBox="0 0 24 24"><path d="m15 5-7 7 7 7"/></symbol>
+<symbol id="i-chev-right" viewBox="0 0 24 24"><path d="m9 5 7 7-7 7"/></symbol>
+<symbol id="i-chev-down" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></symbol>
+<symbol id="i-download" viewBox="0 0 24 24"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></symbol>
+<symbol id="i-external" viewBox="0 0 24 24"><path d="M14 4h6v6M20 4l-9 9M18 14v4a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4"/></symbol>
+<symbol id="i-sparkle" viewBox="0 0 24 24"><path d="M12 3.5 13.9 9l5.6 1.9-5.6 1.9L12 18.5l-1.9-5.7L4.5 11 10.1 9z"/><path d="M19 3v3M17.5 4.5h3"/></symbol>
+<symbol id="i-locate" viewBox="0 0 24 24"><path d="M4 6h16M4 12h10M4 18h7"/><path d="m16 15 4 3-4 3"/></symbol>
+<symbol id="i-alert" viewBox="0 0 24 24"><path d="M10.3 4.6 2.9 17.6A2 2 0 0 0 4.6 20.6h14.8a2 2 0 0 0 1.7-3L13.7 4.6a2 2 0 0 0-3.4 0z"/><path d="M12 9.5v4.5"/><circle cx="12" cy="17" r="1.2" fill="currentColor" stroke="none"/></symbol>
+<symbol id="i-close" viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"/></symbol>
+<symbol id="i-smile" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M8.5 14a4.5 4.5 0 0 0 7 0"/><circle cx="9" cy="10" r="1.2" fill="currentColor" stroke="none"/><circle cx="15" cy="10" r="1.2" fill="currentColor" stroke="none"/></symbol>
+<symbol id="i-send" viewBox="0 0 24 24"><path d="M4.4 3.9 20.6 11.1a1 1 0 0 1 0 1.8L4.4 20.1a.8.8 0 0 1-1.1-1l2.4-6.1L13 12l-7.3-1-2.4-6.1a.8.8 0 0 1 1.1-1z" fill="currentColor" stroke="none"/></symbol>
+<symbol id="i-reply" viewBox="0 0 24 24"><path d="M9 14 4 9l5-5"/><path d="M4 9h10a6 6 0 0 1 6 6v3"/></symbol>
+<symbol id="i-eye" viewBox="0 0 24 24"><path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z"/><circle cx="12" cy="12" r="3"/></symbol>
+<symbol id="i-image" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="3"/><circle cx="9" cy="10" r="1.8"/><path d="m21 16-5-5-8 9"/></symbol>
+<symbol id="i-film" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="3"/><path d="M7 4v16M17 4v16M3 9h4M3 15h4M17 9h4M17 15h4"/></symbol>
+<symbol id="i-record" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3.5" fill="currentColor"/></symbol>
+<symbol id="i-mic" viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="12" rx="3"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21"/></symbol>
+<symbol id="i-file" viewBox="0 0 24 24"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/></symbol>
+<symbol id="i-music" viewBox="0 0 24 24"><path d="M9 18V6l11-2v12"/><circle cx="6.5" cy="18" r="2.5"/><circle cx="17.5" cy="16" r="2.5"/></symbol>
+<symbol id="i-sticker" viewBox="0 0 24 24"><path d="M20 12.5V7a3 3 0 0 0-3-3H7a3 3 0 0 0-3 3v10a3 3 0 0 0 3 3h5.5z"/><path d="M12.5 20v-3.5a4 4 0 0 1 4-4H20M8.5 13.4a3.6 3.6 0 0 0 3.3 1.8"/><circle cx="9" cy="9.5" r="1.15" fill="currentColor" stroke="none"/><circle cx="14" cy="9.5" r="1.15" fill="currentColor" stroke="none"/></symbol>
+<symbol id="i-arrow-down" viewBox="0 0 24 24"><path d="m6 9.5 6 6 6-6"/></symbol>
+<symbol id="i-folder" viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></symbol>
+<symbol id="i-archive" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="4" rx="1.5"/><path d="M5 8v10a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8M10 12h4"/></symbol>
+<symbol id="i-share" viewBox="0 0 24 24"><circle cx="18" cy="5.5" r="2.5"/><circle cx="6" cy="12" r="2.5"/><circle cx="18" cy="18.5" r="2.5"/><path d="m8.3 13.2 7.4 4.1M15.7 6.7l-7.4 4.1"/></symbol>
+<symbol id="i-link" viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7.1-7.1l-1.7 1.7"/><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7.1 7.1l1.7-1.7"/></symbol>
+<symbol id="i-lock" viewBox="0 0 24 24"><rect x="4.5" y="10.5" width="15" height="10" rx="2.5"/><path d="M8 10.5V7.5a4 4 0 0 1 8 0v3"/></symbol>
+<symbol id="i-copy" viewBox="0 0 24 24"><rect x="9" y="9" width="12" height="12" rx="2.5"/><path d="M5 15h-.5A1.5 1.5 0 0 1 3 13.5v-9A1.5 1.5 0 0 1 4.5 3h9A1.5 1.5 0 0 1 15 4.5V5"/></symbol>
+<symbol id="i-users" viewBox="0 0 24 24"><path d="M16 20.5v-1.5a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v1.5"/><circle cx="9" cy="7.5" r="3.5"/><path d="M22 20.5v-1.5a4 4 0 0 0-3-3.87M16 4.13a3.5 3.5 0 0 1 0 6.74"/></symbol>
+<symbol id="i-user" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4.5 20.5a7.5 7.5 0 0 1 15 0"/></symbol>
+<symbol id="i-note" viewBox="0 0 24 24"><rect x="5" y="3.5" width="14" height="17" rx="2.5"/><path d="M9 8.5h6M9 12h6M9 15.5h3.5"/></symbol>
+<symbol id="i-calendar" viewBox="0 0 24 24"><rect x="3.5" y="5" width="17" height="15.5" rx="3"/><path d="M3.5 10h17M8 3v4M16 3v4"/></symbol>
+<symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></symbol>
+<symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="m16 16 4.5 4.5"/></symbol>
+<symbol id="i-play" viewBox="0 0 24 24"><path d="M8 5.5v13a1 1 0 0 0 1.5.86l10.6-6.5a1 1 0 0 0 0-1.72L9.5 4.64A1 1 0 0 0 8 5.5z" fill="currentColor" stroke="none"/></symbol>
+<symbol id="i-pause" viewBox="0 0 24 24"><rect x="6.5" y="5" width="4" height="14" rx="1.2" fill="currentColor" stroke="none"/><rect x="13.5" y="5" width="4" height="14" rx="1.2" fill="currentColor" stroke="none"/></symbol>
+<symbol id="i-phone" viewBox="0 0 24 24"><path d="M6.6 3.5h2.6l1.4 4-2 1.5a11 11 0 0 0 6.4 6.4l1.5-2 4 1.4v2.6a2 2 0 0 1-2.2 2A16.5 16.5 0 0 1 4.6 5.7a2 2 0 0 1 2-2.2z"/></symbol>
+<symbol id="i-more-h" viewBox="0 0 24 24"><circle cx="5.5" cy="12" r="1.7" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.7" fill="currentColor" stroke="none"/><circle cx="18.5" cy="12" r="1.7" fill="currentColor" stroke="none"/></symbol>
+<symbol id="i-bell-off" viewBox="0 0 24 24"><path d="M6.5 16.5V10a5.5 5.5 0 0 1 11 0v6.5l1.5 1.5H5zM10 20.5a2 2 0 0 0 4 0M4 4l16 16"/></symbol>
+<symbol id="i-video" viewBox="0 0 24 24"><rect x="3" y="6.5" width="12.5" height="11" rx="2.5"/><path d="m15.5 10.5 5-3v9l-5-3z"/></symbol>
+<symbol id="i-brush" viewBox="0 0 24 24"><path d="M18.5 3.5a2 2 0 0 1 2 2c0 3-6 9-8.5 10.5l-2-2C11.5 11.5 15.5 3.5 18.5 3.5zM9.5 13.5c-2 0-3.5 1.5-3.5 3.5 0 1.5-1 2.5-2.5 2.5 1 1 2.5 1.5 4 1.5 2.5 0 4-1.5 4-3.5"/></symbol>
+<symbol id="i-x-circle" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="m9 9 6 6M15 9l-6 6"/></symbol>
+<symbol id="i-check" viewBox="0 0 24 24"><path d="m5 12.5 4.5 4.5L19 7.5"/></symbol>
+</defs>
+</svg>
+<section class="home hidden" id="home" aria-labelledby="homeTitle" data-tauri-drag-region="deep">
+  <div class="home-inner">
+    <svg class="scene" viewBox="0 0 710 500" role="img" aria-labelledby="sceneTitle" fill="currentColor">
+  <title id="sceneTitle">Someone sits on a sloped roof by the chimney, hugging their knees and looking up at the moon and the stars</title>
+  <g class="stars">
+    <path class="tw t1" d="M70 59Q71.98 68.02 81 70Q71.98 71.98 70 81Q68.02 71.98 59 70Q68.02 68.02 70 59Z"/>
+    <path class="tw t3" d="M352 38Q353.44 44.56 360 46Q353.44 47.44 352 54Q350.56 47.44 344 46Q350.56 44.56 352 38Z"/>
+    <path class="tw t2" d="M590 59Q592.34 69.66 603 72Q592.34 74.34 590 85Q587.66 74.34 577 72Q587.66 69.66 590 59Z"/>
+    <path class="tw t5" d="M668 207Q669.26 212.74 675 214Q669.26 215.26 668 221Q666.74 215.26 661 214Q666.74 212.74 668 207Z"/>
+    <path class="tw t4" d="M120 219Q121.26 224.74 127 226Q121.26 227.26 120 233Q118.74 227.26 113 226Q118.74 224.74 120 219Z"/>
+    <circle class="tw t2" cx="140" cy="30" r="2.6"/>
+    <circle class="tw t4" cx="300" cy="120" r="2.2"/>
+    <circle class="tw t1" cx="430" cy="64" r="2.6"/>
+    <circle class="tw t5" cx="500" cy="20" r="2"/>
+    <circle class="tw t3" cx="660" cy="30" r="2.4"/>
+    <circle class="tw t3" cx="38" cy="160" r="2.2"/>
+    <circle class="tw t1" cx="560" cy="180" r="2"/>
+    <circle class="tw t5" cx="240" cy="170" r="2.2"/>
+  </g>
+  <path class="shoot" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" d="M700 112 l-64 30"/>
+  <g class="moon"><path transform="translate(0 500) scale(1 -1)" d="M202 476 c-25 -14 -35 -43 -22 -68 14 -28 50 -37 75 -19 l6 4 -9 -1
+c-46 -3 -74 48 -45 83 4 5 3 5 -5 1z"/></g>
+  <g class="house"><path transform="translate(0 500) scale(1 -1)" d="M446 368 c-1 -1 -2 -2 -2 -1 -1 0 -1 -1 -2 -2 0 -3 -1 -3 -4 0 l-2 3
+-1 -2 c-1 -2 -1 -4 -1 -5 0 -2 -1 -3 -1 -2 -2 1 -1 -4 1 -6 2 -2 2 -2 0 -4 -1
+-1 -2 -3 -2 -4 0 -1 -2 -4 -3 -6 -3 -3 -4 -5 -5 -14 -1 -11 -1 -11 4 -13 4 -1
+7 -4 7 -6 0 -1 1 -3 2 -4 0 -2 1 -3 1 -3 0 -1 -2 -1 -4 -1 -5 -1 -22 -9 -26
+-13 -2 -1 -19 -7 -22 -7 -1 0 -3 -1 -5 -1 -1 -1 -3 -2 -5 -2 -6 0 -30 -10 -35
+-15 -3 -2 -7 -6 -11 -9 -4 -3 -7 -5 -8 -9 -5 -9 -4 -20 2 -21 3 -1 5 1 4 5 -2
+3 -1 7 1 8 3 3 3 2 2 -3 0 -3 0 -4 1 -4 2 1 8 11 8 15 1 3 3 3 6 1 0 -1 -2 -5
+-4 -10 -5 -10 -26 -62 -26 -64 0 0 1 -1 2 -2 4 -3 4 -2 1 -9 -2 -6 -3 -7 -5
+-7 -1 1 -4 -1 -9 -6 -7 -7 -13 -10 -26 -16 -4 -2 -5 -2 -6 -6 -1 -5 -1 -7 3
+-8 3 -1 1 -2 -32 -13 -34 -12 -115 -39 -158 -54 -22 -8 -32 -12 -49 -22 -10
+-5 -11 -7 -5 -5 2 1 14 4 28 7 33 8 40 10 181 53 24 7 54 16 66 20 118 36 158
+48 196 60 l26 7 33 -16 c18 -9 53 -27 78 -40 25 -12 46 -23 47 -23 0 0 0 4 0
+9 l0 10 -4 2 c-3 2 -15 9 -28 16 l-23 13 0 53 1 54 4 0 5 0 0 10 0 10 -42 0
+-42 0 0 -10 0 -9 4 -1 5 0 0 -36 c0 -20 0 -36 0 -36 -1 0 -9 4 -19 9 l-19 9
+-16 -5 c-20 -6 -19 -6 -18 -2 1 2 2 4 2 6 0 2 1 8 2 12 7 37 -8 87 -29 97 -2
+1 -4 3 -4 3 0 0 0 2 -1 2 0 1 0 2 1 2 1 0 11 8 14 11 2 3 5 10 5 13 0 3 0 3 1
+2 1 -1 1 -1 1 1 0 2 -1 4 -2 6 -2 2 -3 3 -2 5 0 2 -7 11 -12 14 -2 1 -6 2 -9
+3 -8 2 -14 4 -14 7 -1 1 -1 1 -2 -1z m-60 -119 c4 -2 5 -2 17 -2 7 1 13 1 13
+1 1 0 2 -2 2 -5 2 -17 2 -16 8 -22 7 -7 5 -6 -12 7 -14 10 -20 15 -29 21 -5 3
+-4 3 1 0z m-15 -45 c0 -7 15 -32 27 -44 3 -3 5 -6 5 -7 -1 0 -13 -3 -26 -7
+-13 -5 -26 -8 -27 -9 -3 -1 -3 -1 -4 5 -1 3 -2 6 -2 7 -2 2 0 6 4 6 4 1 4 0
+15 27 6 15 7 18 7 22 -1 2 0 4 0 3 1 0 1 -1 1 -3z"/></g>
+</svg>
+    <div class="home-text">
+      <h1 class="wordmark home-title" id="homeTitle" aria-label="i and roof dot top">i<span class="amp">&amp;</span>roof.top</h1>
+      <p class="home-story" id="homeStory" aria-live="polite"></p>
+      <button class="home-go" id="homeGo">Climb up</button>
+    </div>
+  </div>
+</section>
+<div class="app" id="app">
+  <aside class="sidebar" id="sidebar">
+    <header class="side-head" data-tauri-drag-region="deep">
+      <button class="brand" id="brandBtn" title="Back to the roof" aria-label="iRoof.top: back to the roof"><span class="logo" aria-hidden="true"></span><span class="wordmark">i<span class="amp">&amp;</span>roof.top</span></button>
+      <div class="head-actions">
+        <button class="icon-btn" id="themeBtn" title="Theme: auto" aria-label="Toggle theme"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-auto"></use></svg></button>
+        <button class="icon-btn" id="settingsBtn" title="Settings" aria-label="Settings"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-settings"></use></svg></button>
+      </div>
+    </header>
+    <div class="side-actions">
+      <button class="btn grow" id="newChatBtn"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-plus"></use></svg><span>New chat</span></button>
+      <button class="btn" id="importBtn" title="Import a Telegram or WhatsApp export" aria-label="Import a Telegram or WhatsApp export"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-upload"></use></svg><span>Import</span></button>
+    </div>
+    <button type="button" class="setup-note hidden" id="setupNote" aria-describedby="setupNoteText">
+      <svg class="i sn-icon" aria-hidden="true" focusable="false"><use href="#i-sparkle"></use></svg>
+      <span class="sn-text"><b>Connect a model</b><span id="setupNoteText">OpenAI-compatible API or local model</span></span>
+      <svg class="i sn-go" aria-hidden="true" focusable="false"><use href="#i-chev-right"></use></svg>
+    </button>
+    <nav class="chat-list" id="chatList" aria-label="Chats"></nav>
+    <details class="exports" id="exportsBox">
+      <summary><svg class="i" aria-hidden="true" focusable="false"><use href="#i-archive"></use></svg><span class="ex-label">Imported exports</span><span class="ex-count" id="exportCount"></span><svg class="i chev" aria-hidden="true" focusable="false"><use href="#i-chev-down"></use></svg></summary>
+      <div id="exportList"></div>
+    </details>
+  </aside>
+
+  <main class="main" id="main">
+    <section class="welcome" id="welcome" data-tauri-drag-region>
+      <div class="welcome-card tut-card">
+        <!-- telegram-export.svg -->
+        <div class="dropzone tut-drop" id="dropzone">
+          <div class="dz-icon"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-upload"></use></svg></div>
+          <b class="dz-title">Drop a Telegram or WhatsApp export</b>
+          <span class="dz-hint">Telegram: folder or .zip · WhatsApp: folder, .zip or .txt</span>
+          <div class="dz-actions">
+            <button class="btn" id="pickFolder"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-folder"></use></svg><span>Choose folder…</span></button>
+            <button class="btn" id="pickZip"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-archive"></use></svg><span>Choose .zip…</span></button>
+          </div>
+          <div class="progress hidden" id="uploadProgress"><div></div></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="welcome hidden" id="guestGate" data-tauri-drag-region>
+      <form class="welcome-card gate" id="gateForm" novalidate>
+        <div class="avatar xl" id="gateAvatar"></div>
+        <h1 id="gateTitle"></h1>
+        <p class="gate-greeting" id="gateGreeting"></p>
+        <div class="gate-resume hidden" id="gateResume">
+          <button type="button" class="btn primary block" id="gateContinue"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-chat"></use></svg><span>Continue our conversation</span></button>
+          <div class="gate-or"><span>or start a new one</span></div>
+        </div>
+        <div class="gate-fields" id="gateFields">
+          <label class="gate-field hidden" id="gatePinRow"><span><svg class="i" aria-hidden="true" focusable="false"><use href="#i-lock"></use></svg>PIN</span>
+            <input id="gatePin" type="password" autocomplete="off" maxlength="64" aria-describedby="gateErr" enterkeyhint="go">
+          </label>
+          <label class="gate-field"><span>Your name <i class="muted">optional</i></span>
+            <input id="gateYou" maxlength="40" autocomplete="nickname" enterkeyhint="go" placeholder="So they know who visited">
+          </label>
+          <div class="gate-err hidden" id="gateErr" role="alert"></div>
+          <button class="btn primary block" id="gateStart"><span>Start chatting</span></button>
+        </div>
+        <p class="muted small gate-note">Replies are written by an AI that imitates a real person's style. The owner of this link can read the conversation.</p>
+      </form>
+    </section>
+
+    <section class="chat hidden" id="chatView">
+      <header class="chat-head" data-tauri-drag-region="deep">
+        <button class="icon-btn back" id="backBtn" title="Back to chats" aria-label="Back to chats"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-back"></use></svg></button>
+        <button type="button" class="peer" id="peerBtn" title="Profile" aria-haspopup="dialog">
+          <span class="avatar" id="chatAvatar"></span>
+          <span class="chat-title">
+            <span class="name" id="chatName"></span>
+            <span class="sub" id="chatSub"></span>
+          </span>
+        </button>
+        <div class="head-actions">
+          <button class="icon-btn" id="nudgeBtn" title="Let them write first" aria-label="Let them write first"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-nudge"></use></svg></button>
+          <button class="icon-btn" id="regenBtn" title="Rewrite the last answer" aria-label="Rewrite the last answer"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-refresh"></use></svg></button>
+          <button class="icon-btn more-btn" id="moreBtn" title="More" aria-label="More actions" aria-haspopup="true" aria-expanded="false" aria-controls="moreMenu"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-more"></use></svg></button>
+          <div class="more-menu" id="moreMenu">
+          <button class="icon-btn" id="shareBtn" title="Share a link to this chat" aria-label="Share link"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-share"></use></svg></button>
+          <button class="icon-btn" id="mediaBtn" title="Media library" aria-label="Media library"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-image"></use></svg></button>
+          <button class="icon-btn" id="notesBtn" title="Notes about this person" aria-label="Notes about this person"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-edit"></use></svg></button>
+          <button class="icon-btn" id="promptBtn" title="Show LLM messages JSON" aria-label="Show LLM messages JSON"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-braces"></use></svg></button>
+          <button class="icon-btn danger" id="deleteChatBtn" title="Delete chat" aria-label="Delete chat"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-trash"></use></svg></button>
+          </div>
+        </div>
+      </header>
+      <div class="msg-wrap">
+        <div class="messages" id="messages" role="log" aria-live="polite"></div>
+        <button class="to-bottom hidden" id="toBottom" title="Scroll to latest" aria-label="Scroll to latest message"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-arrow-down"></use></svg></button>
+      </div>
+      <div class="picker hidden" id="picker">
+        <div class="picker-tabs"><button data-tab="sticker" class="active">Stickers</button><button data-tab="gif">GIFs</button></div>
+        <div class="picker-grid" id="pickerGrid"></div>
+      </div>
+      <footer class="composer">
+        <div class="reply-bar hidden" id="replyBar">
+          <div class="rb-line"></div>
+          <div class="rb-body"><div class="rb-title" id="replyTitle"></div><div class="rb-text" id="replyText"></div></div>
+          <button class="icon-btn" id="replyCancel" title="Cancel reply" aria-label="Cancel reply"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-close"></use></svg></button>
+        </div>
+        <div class="compose-row">
+          <button class="icon-btn" id="pickerBtn" title="Stickers & GIFs" aria-label="Stickers and GIFs" aria-expanded="false"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-sticker"></use></svg></button>
+          <textarea id="input" rows="1" placeholder="Message" aria-label="Message" enterkeyhint="send" autocomplete="off"></textarea>
+          <button class="send" id="sendBtn" title="Send" aria-label="Send" disabled><svg class="i" aria-hidden="true" focusable="false"><use href="#i-send"></use></svg></button>
+          <button class="send mic hidden" id="micBtn" title="Record a voice message" aria-label="Record a voice message"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-mic"></use></svg></button>
+        </div>
+        <div class="rec-bar hidden" id="recBar" role="status" aria-live="polite">
+          <button class="icon-btn" id="recCancel" title="Cancel recording" aria-label="Cancel recording"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-trash"></use></svg></button>
+          <span class="rec-dot" aria-hidden="true"></span>
+          <span class="rec-time" id="recTime">0:00</span>
+          <span class="rec-hint muted" id="recHint">Recording…</span>
+          <button class="send" id="recSend" title="Send voice message" aria-label="Send voice message"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-send"></use></svg></button>
+        </div>
+      </footer>
+    </section>
+  </main>
+</div>
+
+<div class="popover hidden" id="reactPop" role="menu"></div>
+<div class="toast hidden" id="toast" role="status" aria-live="polite"></div>
+<div class="tip hidden" id="tip" role="tooltip"></div>
+<input type="file" id="folderInput" webkitdirectory directory multiple hidden>
+<input type="file" id="zipInput" accept=".zip,.txt,application/zip,text/plain" hidden>
+
+<dialog id="newChatDlg" aria-labelledby="ncH">
+  <form method="dialog" class="dlg compact" id="newChatForm">
+    <div class="dlg-head"><h2 id="ncH">New chat</h2><button type="button" class="icon-btn" data-close aria-label="Close"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-close"></use></svg></button></div>
+    <div class="field">
+      <div class="field-head"><label for="ncExport">Export</label></div>
+      <select id="ncExport" required></select>
+    </div>
+    <fieldset class="field">
+      <legend class="field-head"><span class="legend">Who should the AI be?</span></legend>
+      <div id="ncPersona" class="persona-grid"></div>
+    </fieldset>
+    <div class="field">
+      <div class="field-head"><label for="ncTitle">Title</label><span class="field-hint">optional</span></div>
+      <input id="ncTitle" placeholder="Same as the persona's name" autocomplete="off">
+    </div>
+    <div class="field">
+      <div class="field-head"><label for="ncNotes">Notes about this person</label><span class="field-hint">optional, helps the AI</span></div>
+      <textarea id="ncNotes" rows="3" placeholder="e.g. my grandma, lives in Kyiv, loves gardening, calls me “sunshine”"></textarea>
+    </div>
+    <div class="dlg-actions">
+      <button value="cancel" class="btn" formnovalidate>Cancel</button>
+      <button value="ok" class="btn primary" id="ncCreate">Start chatting</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="importDlg" aria-labelledby="imH" data-source="telegram">
+  <div class="dlg compact im-dlg">
+    <div class="dlg-head"><h2 id="imH">Import a chat</h2><button type="button" class="icon-btn" data-close aria-label="Close"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-close"></use></svg></button></div>
+    <div class="seg im-src" role="radiogroup" aria-label="Messenger">
+      <label><input type="radio" name="imSource" value="telegram" checked><span><svg class="i" aria-hidden="true" focusable="false"><use href="#i-send"></use></svg>Telegram</span></label>
+      <label><input type="radio" name="imSource" value="whatsapp"><span><svg class="i" aria-hidden="true" focusable="false"><use href="#i-chat"></use></svg>WhatsApp</span></label>
+    </div>
+    <div class="im-pane" data-pane="telegram">
+      <div class="im-tut" id="imTut" aria-hidden="true"></div>
+      <ol class="im-steps" aria-label="In Telegram Desktop">
+        <li><svg class="i" aria-hidden="true" focusable="false"><use href="#i-more-h"></use></svg><span>Menu</span></li>
+        <li><svg class="i" aria-hidden="true" focusable="false"><use href="#i-file"></use></svg><span>Export Chat History…</span></li>
+        <li><svg class="i" aria-hidden="true" focusable="false"><use href="#i-check"></use></svg><span>Export</span></li>
+      </ol>
+    </div>
+    <div class="im-pane" data-pane="whatsapp" hidden>
+      <ol class="im-steps" aria-label="In WhatsApp on your phone">
+        <li><svg class="i" aria-hidden="true" focusable="false"><use href="#i-more"></use></svg><span>Menu</span></li>
+        <li><svg class="i" aria-hidden="true" focusable="false"><use href="#i-upload"></use></svg><span>Export chat</span></li>
+        <li><svg class="i" aria-hidden="true" focusable="false"><use href="#i-image"></use></svg><span>Include media</span></li>
+      </ol>
+    </div>
+    <div class="dropzone tut-drop" id="dropzone2">
+      <div class="dz-icon"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-upload"></use></svg></div>
+      <b class="dz-title" id="imDropTitle">Drop the folder or .zip here</b>
+      <div class="dz-actions">
+        <button class="btn" data-pick="folder"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-folder"></use></svg><span>Choose folder…</span></button>
+        <button class="btn" data-pick="zip"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-archive"></use></svg><span id="imZipLabel">Choose .zip…</span></button>
+      </div>
+      <div class="progress hidden" id="uploadProgress2"><div></div></div>
+    </div>
+  </div>
+</dialog>
+
+<dialog id="settingsDlg" aria-labelledby="sH">
+  <form method="dialog" class="dlg wide compact" id="settingsForm">
+    <div class="dlg-head"><h2 id="sH">Settings</h2><button type="button" class="icon-btn" data-close aria-label="Close"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-close"></use></svg></button></div>
+    <div class="grid2">
+      <div class="field">
+        <div class="field-head"><label for="sBase">Base URL</label><button type="button" class="info-btn" aria-label="About: Base URL" aria-expanded="false" aria-controls="hBase"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-info"></use></svg></button></div>
+        <input id="sBase" placeholder="https://openrouter.ai/api/v1" inputmode="url" autocomplete="off" list="sBaseList">
+        <datalist id="sBaseList">
+          <option value="https://api.openai.com/v1">OpenAI</option>
+          <option value="https://openrouter.ai/api/v1">OpenRouter</option>
+          <option value="https://generativelanguage.googleapis.com/v1beta/openai">Google Gemini</option>
+          <option value="https://api.mistral.ai/v1">Mistral</option>
+          <option value="https://api.deepseek.com/v1">DeepSeek</option>
+          <option value="https://api.x.ai/v1">xAI</option>
+          <option value="https://api.groq.com/openai/v1">Groq</option>
+          <option value="https://api.together.xyz/v1">Together</option>
+          <option value="http://localhost:11434/v1">Ollama (this computer)</option>
+          <option value="http://localhost:1234/v1">LM Studio (this computer)</option>
+        </datalist>
+        <div class="help" id="hBase" hidden>Any OpenAI-compatible <code>/chat/completions</code> endpoint: OpenAI, OpenRouter, Ollama (<code>http://localhost:11434/v1</code>), vLLM, LM Studio. Empty uses <code>OPENAI_BASE_URL</code> from the server environment.</div>
+      </div>
+      <div class="field">
+        <div class="field-head"><label for="sModel">Model</label><button type="button" class="info-btn" aria-label="About: Model" aria-expanded="false" aria-controls="hModel"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-info"></use></svg></button></div>
+        <input id="sModel" placeholder="openai/gpt-6-luna" autocomplete="off">
+        <div class="help" id="hModel" hidden>Model id at that endpoint. It must support tool calling. For <b>Describe</b> in the media library it must also accept images. Empty uses <code>OPENAI_MODEL</code>.</div>
+      </div>
+      <div class="field">
+        <div class="field-head"><label for="sKey">API key</label><button type="button" class="info-btn" aria-label="About: API key" aria-expanded="false" aria-controls="hKey"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-info"></use></svg></button></div>
+        <input id="sKey" type="password" autocomplete="off">
+        <div class="help" id="hKey" hidden>Stored on this server only. Leave empty to keep the saved key, type <code>-</code> to clear it. Without a saved key <code>OPENAI_API_KEY</code> is used.</div>
+      </div>
+      <div class="field">
+        <div class="field-head"><label for="sTemp">Temperature</label><button type="button" class="info-btn" aria-label="About: Temperature" aria-expanded="false" aria-controls="hTemp"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-info"></use></svg></button></div>
+        <input id="sTemp" type="number" step="0.1" min="0" max="2" placeholder="provider default">
+        <div class="help" id="hTemp" hidden>Randomness, 0–2. Empty keeps the provider default. 0.7–1.0 usually sounds the most natural.</div>
+      </div>
+      <div class="field">
+        <div class="field-head"><label for="sBudget">History budget, chars</label><button type="button" class="info-btn" aria-label="About: History budget, chars" aria-expanded="false" aria-controls="hBudget"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-info"></use></svg></button></div>
+        <input id="sBudget" type="number" min="4000" step="1000">
+        <div class="help" id="hBudget" hidden>How much of the chat (in characters, ≈ 3–4 per token) is replayed to the model. When it is exceeded, the oldest part is folded into a short memory summary once, keeping the prompt cache stable. Older messages stay searchable.</div>
+      </div>
+      <div class="field">
+        <div class="field-head"><label for="sMediaModel">Media model</label><button type="button" class="info-btn" aria-label="About: Media model" aria-expanded="false" aria-controls="hMediaModel"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-info"></use></svg></button></div>
+        <input id="sMediaModel" placeholder="same as Model" autocomplete="off">
+        <div class="help" id="hMediaModel" hidden>Used to describe photos and stickers and to transcribe voice messages (yours and the export's), so the persona knows what they show or say. It must accept images and audio, e.g. <code>google/gemini-3.5-flash-lite</code> on OpenRouter. Empty uses <code>OPENAI_MEDIA_MODEL</code>, then Model.</div>
+      </div>
+      <div class="field">
+        <div class="field-head"><label for="sSteps">Max tool steps</label><button type="button" class="info-btn" aria-label="About: Max tool steps" aria-expanded="false" aria-controls="hSteps"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-info"></use></svg></button></div>
+        <input id="sSteps" type="number" min="1" max="20">
+        <div class="help" id="hSteps" hidden>How many LLM rounds one answer may take (e.g. search history, then call an MCP tool, then reply). Higher allows more tool use but costs more.</div>
+      </div>
+    </div>
+    <div class="field">
+      <div class="field-head"><label for="sMcp">MCP servers</label><button type="button" class="info-btn" aria-label="About: MCP servers" aria-expanded="false" aria-controls="hMcp"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-info"></use></svg></button></div>
+      <div class="help" id="hMcp" hidden>Common <code>mcpServers</code> JSON: HTTP <code>url</code> (+ <code>headers</code>) or stdio <code>command</code>/<code>args</code>/<code>env</code>. Protocol revisions 2024-11-05 → 2026-07-28. Tools such as Giphy let the persona find and send new GIFs.<br>Example: <code>{"giphy": {"command": "npx", "args": ["-y", "mcp-server-giphy"], "env": {"GIPHY_API_KEY": "…"}}}</code></div>
+      <textarea id="sMcp" rows="5" spellcheck="false" class="mono"></textarea>
+      <div class="mcp-status" id="mcpStatus"></div>
+    </div>
+    <div class="test-result hidden" id="sTestResult" role="status" aria-live="polite"></div>
+    <div class="dlg-actions">
+      <button type="button" class="btn" id="mcpReconnect"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-refresh"></use></svg><span>Reconnect MCP</span></button>
+      <span class="spacer"></span>
+      <button type="button" class="btn" id="sTest" title="Save, then send a tiny request to check the endpoint, key and model">Test</button>
+      <button value="cancel" class="btn" formnovalidate>Cancel</button>
+      <button value="ok" class="btn primary">Save</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="shareDlg" aria-labelledby="shH">
+  <div class="dlg wide compact" id="shListPage">
+    <div class="dlg-head">
+      <h2 id="shH">Share links</h2>
+      <button type="button" class="info-btn" aria-label="How sharing works" aria-expanded="false" aria-controls="hShare"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-info"></use></svg></button>
+      <span class="spacer"></span>
+      <button type="button" class="icon-btn" id="shRefresh" title="Refresh visitors" aria-label="Refresh visitors"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-refresh"></use></svg></button>
+      <button type="button" class="icon-btn" data-close aria-label="Close"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-close"></use></svg></button>
+    </div>
+    <div class="help" id="hShare" hidden>Send a link so other people can talk to this persona, for example a friend who wants to see how well the AI writes in your style, or talks to a copy of themselves. Visitors see only the chat: no settings, notes, media descriptions, LLM prompt or other chats. By default every visitor gets an own conversation that starts after the end of the export, and you can read them all here. A PIN is checked on the server, and wrong guesses lock the link for that visitor first, then for everyone, for longer and longer. Each persona answer costs tokens on your API key, so keep the limits.</div>
+    <div class="note warn hidden" id="shLocal"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-alert"></use></svg><span>This page is open on <b id="shHost"></b>, so these links only work on this device. Open iRoof.top via an address your friends can reach (a server, or a tunnel) to share it.</span></div>
+    <div class="share-list" id="shList"></div>
+    <div class="dlg-actions">
+      <button type="button" class="btn primary" id="shNew"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-plus"></use></svg><span>New link</span></button>
+    </div>
+  </div>
+
+  <form class="dlg compact se-form hidden" id="shareEditForm">
+    <div class="dlg-head">
+      <button type="button" class="icon-btn" id="seBack" title="All links" aria-label="Back to all links"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-back"></use></svg></button>
+      <h2 id="seH">New link</h2>
+      <button type="button" class="icon-btn" data-close aria-label="Close"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-close"></use></svg></button>
+    </div>
+    <div class="field">
+      <div class="field-head"><label for="seSlug">Link</label><span class="field-hint">empty = random</span></div>
+      <div class="slug-row"><span class="slug-prefix" id="seOrigin"></span><input id="seSlug" placeholder="random" autocomplete="off" autocapitalize="off" spellcheck="false" maxlength="40" pattern="[A-Za-z0-9][A-Za-z0-9_\-]{1,38}[A-Za-z0-9]" title="3–40 letters, digits, - or _"></div>
+    </div>
+    <div class="grid2 tight">
+      <div class="field">
+        <div class="field-head"><label for="seName">Display name</label></div>
+        <input id="seName" maxlength="64" autocomplete="off" required>
+      </div>
+      <div class="field">
+        <div class="field-head"><label for="sePin">PIN</label><button type="button" class="info-btn" aria-label="About: PIN" aria-expanded="false" aria-controls="hPin"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-info"></use></svg></button></div>
+        <div class="pin-row"><input id="sePin" maxlength="64" autocomplete="new-password" spellcheck="false" placeholder="none"><button type="button" class="btn icon" id="sePinGen" title="Generate a 6-digit PIN" aria-label="Generate a 6-digit PIN"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-sparkle"></use></svg></button></div>
+        <div class="help" id="hPin" hidden>4–64 characters. Empty means anyone with the link can start a conversation. Stored only as a hash: write it down or copy the invite right after saving. 6+ digits or a short phrase is much harder to guess.</div>
+      </div>
+    </div>
+    <label class="check hidden" id="sePinClearRow"><input type="checkbox" id="sePinClear"> Remove the PIN</label>
+    <div class="field">
+      <div class="field-head"><label for="seGreeting">Greeting on the start page</label><span class="field-hint">optional</span></div>
+      <input id="seGreeting" maxlength="300" placeholder="e.g. “Try to tell if it's really me 😉”" autocomplete="off">
+    </div>
+    <div class="field">
+      <div class="field-head"><span class="legend" id="seModeL">Conversations</span></div>
+      <div class="seg" role="radiogroup" aria-labelledby="seModeL">
+        <label><input type="radio" name="seMode" value="private" checked><span><svg class="i" aria-hidden="true" focusable="false"><use href="#i-user"></use></svg>Private</span></label>
+        <label><input type="radio" name="seMode" value="room"><span><svg class="i" aria-hidden="true" focusable="false"><use href="#i-users"></use></svg>Shared room</span></label>
+      </div>
+      <div class="field-note" id="seModeNote"></div>
+    </div>
+    <div class="field">
+      <div class="field-head"><span class="legend" id="seHistL">Visitors can read the export</span></div>
+      <div class="seg" role="radiogroup" aria-labelledby="seHistL">
+        <label><input type="radio" name="seHistory" value="none" checked><span>Nothing</span></label>
+        <label><input type="radio" name="seHistory" value="recent"><span>Recent</span></label>
+        <label><input type="radio" name="seHistory" value="full"><span>Everything</span></label>
+      </div>
+      <div class="field-note"><span id="seHistNote"></span><span class="inline-num hidden" id="seRecentRow"><label for="seRecent">Last</label><input id="seRecent" type="number" min="1" max="1000" value="30" inputmode="numeric"><span>messages</span></span></div>
+    </div>
+    <div class="grid3">
+      <div class="field">
+        <div class="field-head"><label for="seMaxSessions">Max visitors</label></div>
+        <input id="seMaxSessions" type="number" min="0" max="100000" placeholder="∞" inputmode="numeric">
+      </div>
+      <div class="field">
+        <div class="field-head"><label for="seMaxReplies">Answers each</label></div>
+        <input id="seMaxReplies" type="number" min="0" max="1000000" placeholder="∞" inputmode="numeric">
+      </div>
+      <div class="field span2">
+        <div class="field-head"><label for="seExpires">Expires</label><span class="field-hint">optional</span></div>
+        <input id="seExpires" type="datetime-local">
+      </div>
+    </div>
+    <div class="grid2 tight hidden" id="seTgRow">
+      <div class="field">
+        <div class="field-head"><label for="seTg">Telegram group</label><button type="button" class="info-btn" aria-label="About: Telegram group" aria-expanded="false" aria-controls="hTg"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-info"></use></svg></button></div>
+        <select id="seTg"></select>
+        <div class="help" id="hTg" hidden>Visitor messages are posted to this group with two buttons: <b>Reply</b> (answer yourself, as a reply to the bot) and <b>AI reply</b>. If nobody presses anything, the AI answers when the countdown ends. Visitors can't tell who answered. Add the bot to a group to see it here.</div>
+      </div>
+      <div class="field">
+        <div class="field-head"><label for="seAiDelay">AI answers after</label><span class="field-hint">seconds · 0 = only on request</span></div>
+        <input id="seAiDelay" type="number" min="0" max="3600" value="10" inputmode="numeric">
+      </div>
+    </div>
+    <label class="switch-row"><span class="sw-text"><b>Link is active</b><span class="muted small">Turn off to pause it without deleting anything</span></span><input type="checkbox" class="switch" id="seEnabled" checked></label>
+    <ul class="se-summary" id="seSummary" aria-live="polite"></ul>
+    <div class="dlg-actions">
+      <button type="button" class="btn danger hidden" id="seDelete"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-trash"></use></svg><span>Delete</span></button>
+      <span class="spacer"></span>
+      <button type="button" class="btn" id="seCancel">Cancel</button>
+      <button type="submit" class="btn primary" id="seSave">Create link</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="notesDlg" aria-labelledby="nH">
+  <form method="dialog" class="dlg compact">
+    <div class="dlg-head"><h2 id="nH">Chat details</h2><button type="button" class="icon-btn" data-close aria-label="Close"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-close"></use></svg></button></div>
+    <div class="field">
+      <div class="field-head"><label for="nTitle">Title</label></div>
+      <input id="nTitle" autocomplete="off">
+    </div>
+    <div class="field">
+      <div class="field-head"><label for="nNotes">Notes about this person and your relationship</label></div>
+      <textarea id="nNotes" rows="6"></textarea>
+    </div>
+    <div class="field">
+      <div class="field-head"><label for="nVoice">Voice for their voice messages</label><button type="button" class="info-btn" aria-label="About: Voice" aria-expanded="false" aria-controls="hVoice"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-info"></use></svg></button><span class="field-hint">optional</span></div>
+      <input id="nVoice" maxlength="64" autocomplete="off" spellcheck="false" placeholder="e.g. Puck">
+      <div class="help" id="hVoice" hidden>A voice name of your text-to-speech MCP server. The persona uses it when it sends a voice message. Empty uses the server's default voice.</div>
+    </div>
+    <div class="dlg-actions">
+      <button value="cancel" class="btn" formnovalidate>Cancel</button>
+      <button value="ok" class="btn primary">Save</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="promptDlg" aria-labelledby="pH">
+  <div class="dlg wide compact">
+    <div class="dlg-head"><h2 id="pH">LLM input</h2><button type="button" class="icon-btn" data-close aria-label="Close"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-close"></use></svg></button></div>
+    <p class="muted small dlg-lead" id="promptInfo"></p>
+    <pre class="mono prompt-pre" id="promptPre"></pre>
+    <div class="dlg-actions">
+      <button class="btn" id="promptCopy"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-copy"></use></svg><span>Copy</span></button>
+      <button class="btn" id="promptDownload"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-download"></use></svg><span>Download JSON</span></button>
+      <span class="spacer"></span>
+      <button class="btn primary" data-close>Close</button>
+    </div>
+  </div>
+</dialog>
+
+<dialog id="confirmDlg" class="sheet" aria-labelledby="cfH" aria-describedby="cfText">
+  <form method="dialog" class="dlg confirm">
+    <div class="cf-icon" id="cfIcon"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-alert"></use></svg></div>
+    <h2 id="cfH"></h2>
+    <p id="cfText" class="muted"></p>
+    <label class="check cf-remember hidden" id="cfRememberRow"><input type="checkbox" id="cfRemember"> Don't ask again</label>
+    <div class="dlg-actions">
+      <button value="cancel" class="btn" id="cfCancel">Cancel</button>
+      <button value="ok" class="btn primary" id="cfOk">OK</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="profileDlg" aria-labelledby="pfName">
+  <div class="dlg compact profile">
+    <div class="dlg-head"><h2 class="pf-title">Info</h2><button type="button" class="icon-btn" data-close aria-label="Close"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-close"></use></svg></button></div>
+    <div class="pf-body" id="pfBody"></div>
+  </div>
+</dialog>
+
+<dialog id="mediaDlg" aria-labelledby="mdH">
+  <div class="dlg wide compact" tabindex="-1">
+    <div class="dlg-head">
+      <h2 id="mdH">Media library</h2>
+      <button type="button" class="info-btn" aria-label="What is this?" aria-expanded="false" aria-controls="hMedia"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-info"></use></svg></button>
+      <span class="spacer"></span>
+      <button type="button" class="icon-btn" data-close aria-label="Close"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-close"></use></svg></button>
+    </div>
+    <div class="help" id="hMedia" hidden>The model cannot see pictures or hear audio: in the history a sticker is just <code>&lt;sticker stk_…&gt;</code>. A one-line description per sticker, GIF and photo, and a transcript per voice message, tell it what each one shows or says, so it understands what was sent and answers the same way. <b>Describe with AI</b> sends the images and voice messages to the media model from Settings (it must accept images and audio). You can also write or correct descriptions by hand. Descriptions are saved with the export and used by all its chats.</div>
+    <div class="md-bar">
+      <label class="md-search"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-search"></use></svg><input type="search" id="mdSearch" placeholder="Search descriptions or ids" autocomplete="off" spellcheck="false" aria-label="Search the media library"></label>
+      <button class="btn primary" id="mdDescribe"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-sparkle"></use></svg><span>Describe with AI</span></button>
+    </div>
+    <div class="md-filters" role="tablist" aria-label="Filter" id="mdFilters"></div>
+    <div class="md-progress" id="mdProgress"><div class="md-meter" role="progressbar" aria-label="Described" aria-valuemin="0" id="mdMeter"><div></div></div><span class="muted small" id="mdSummary"></span></div>
+    <div class="md-grid" id="mdGrid" role="list"></div>
+  </div>
+</dialog>
+
+<div class="lightbox hidden" id="lightbox" role="dialog" aria-modal="true" aria-label="Photo viewer" tabindex="-1">
+  <div class="lb-top">
+    <div class="lb-who"><div class="lb-name" id="lbName"></div><div class="lb-date" id="lbDate"></div></div>
+    <span class="lb-count" id="lbCount"></span>
+    <span class="spacer"></span>
+    <button class="lb-btn" id="lbLocate" title="Show in chat" aria-label="Show in chat"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-locate"></use></svg></button>
+    <a class="lb-btn" id="lbOpen" target="_blank" rel="noopener" title="Open original" aria-label="Open original"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-external"></use></svg></a>
+    <a class="lb-btn" id="lbDownload" download title="Download" aria-label="Download"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-download"></use></svg></a>
+    <button class="lb-btn" id="lbClose" title="Close (Esc)" aria-label="Close"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-close"></use></svg></button>
+  </div>
+  <div class="lb-stage" id="lbStage">
+    <button class="lb-nav prev" id="lbPrev" aria-label="Previous photo"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-chev-left"></use></svg></button>
+    <img id="lbImg" alt="" draggable="false">
+    <button class="lb-nav next" id="lbNext" aria-label="Next photo"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-chev-right"></use></svg></button>
+  </div>
+  <div class="lb-caption" id="lbCaption"></div>
+  <div class="lb-strip" id="lbStrip"></div>
+</div>
+
+<script src="/app.js"></script>
+</body>
+</html>

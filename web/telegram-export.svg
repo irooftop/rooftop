@@ -1,0 +1,212 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- iRoof.top: how to export a chat in Telegram Desktop (animated, 10 s loop).
+     Single source: inlined into web/index.html by the server, and shown in the README. -->
+<svg xmlns="http://www.w3.org/2000/svg" class="tut" id="tutorial" viewBox="0 0 560 400" width="560" height="400" role="img" aria-labelledby="tut-title" focusable="false">
+  <style>
+  /* Colours come from the app's theme variables when this SVG is inlined in iRoof.top.
+     Standing alone (README, image viewers) it uses the fallbacks, and the system dark mode below. */
+  @media (prefers-color-scheme: dark) { :root:not(html) { --bg-2: #17202a; --panel: #182533; --text: #e8eaed; --muted: #8b98a5; --border: #22313f; --hover: #1f2d3b; --chat-bg: #0e1621; --in: #182533; --out: #2b5278; --out-text: #ffffff; --out-meta: #9fc4ea; } }
+  .tut { display: block; width: 100%; height: auto; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; user-select: none; -webkit-user-select: none; }
+  .tut text { font-size: 14px; fill: var(--text, #0f1419); }
+  .tut-bg { fill: var(--chat-bg, #dfe7d6); }
+  .tut-panel { fill: var(--panel, #ffffff); }
+  .tut-line { stroke: var(--border, #e4e6ea); fill: none; }
+  .tut-frame { fill: none; stroke: var(--border, #e4e6ea); }
+  .tut-in { fill: var(--in, #ffffff); filter: drop-shadow(0 1px 1px rgba(16, 35, 47, .14)); }
+  .tut-out { fill: var(--out, #e3fec6); filter: drop-shadow(0 1px 1px rgba(16, 35, 47, .14)); }
+  .tut .tut-t-out { fill: var(--out-text, #0f1419); }
+  .tut .tut-time { font-size: 11px; fill: var(--muted, #707579); }
+  .tut .tut-time-out { fill: var(--out-meta, #4fae4e); }
+  .tut .tut-time-on { font-size: 10.5px; fill: #fff; }
+  .tut-ticks { fill: none; stroke: var(--out-meta, #4fae4e); stroke-width: 1.4; stroke-linecap: round; stroke-linejoin: round; }
+  .tut .tut-av-t { font-size: 14.5px; font-weight: 600; fill: #fff; }
+  .tut .tut-name { font-size: 15px; font-weight: 600; }
+  .tut .tut-sub { font-size: 12.5px; fill: var(--muted, #707579); }
+  .tut use { fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+  .tut-hicon { color: var(--muted, #707579); }
+  .tut-mi { color: var(--text, #0f1419); }
+  .tut-danger { color: var(--danger, #e53935); }
+  .tut .tut-danger text { fill: var(--danger, #e53935); }
+  .tut-more-bg { fill: var(--hover, #f1f3f5); opacity: 0; }
+  .tut-menu-bg { fill: var(--panel, #ffffff); stroke: var(--border, #e4e6ea); filter: drop-shadow(0 10px 24px rgba(0, 0, 0, .22)); }
+  .tut-hl { fill: color-mix(in srgb, var(--accent, #3390ec) 14%, transparent); opacity: 0; }
+  .tut-btn { fill: var(--accent, #3390ec); }
+  .tut-row { fill: var(--bg-2, #f4f5f7); }
+  .tut-sw { fill: var(--accent, #3390ec); }
+  .tut-x { fill: none; stroke: var(--text, #0f1419); stroke-width: 1.8; stroke-linecap: round; }
+  .tut .tut-c { font-size: 14px; }
+  .tut-sheet .tut-mi text { font-size: 12.5px; }
+  .tut .tut-sheet .tut-val { fill: var(--muted, #707579); }
+  .tut .tut-sheet .tut-cap { font-size: 9.5px; letter-spacing: .6px; fill: var(--muted, #707579); }
+  .tut .tut-sheet .tut-note { font-size: 10.5px; fill: var(--muted, #707579); }
+  .tut-sheet .tut-chev, .tut-sheet use { color: var(--muted, #707579); }
+  .tut-sheet { animation: tut-sheet 10s infinite; }
+  @keyframes tut-sheet { 0%, 50% { transform: translateY(14px); } 54%, 72% { transform: none; } 75%, 100% { transform: translateY(6px); } }
+  .tut .tut-btn-t { fill: #fff; font-weight: 600; font-size: 13.5px; }
+  .tut-click { fill: var(--accent, #3390ec); opacity: 0; transform-box: fill-box; transform-origin: center; }
+  .tut-cursor { filter: drop-shadow(0 2px 3px rgba(0, 0, 0, .3)); }
+  .tut-cursor { animation: tut-cursor 10s ease-in-out infinite; }
+  .tut-more-bg { animation: tut-more 10s infinite; }
+  .tut-more { animation: tut-more-icon 10s infinite; }
+  .tut-menu { transform-box: fill-box; transform-origin: 100% 0; animation: tut-menu 10s infinite; }
+  .tut-hl { animation: tut-hl 10s infinite; }
+  .tut-dlg { animation: tut-dlg 10s infinite; }
+  .tut-btn { animation: tut-btn 10s infinite; }
+  .tut-click.c1 { animation: tut-c1 10s infinite; }
+  .tut-click.c2 { animation: tut-c2 10s infinite; }
+  .tut-click.c3 { animation: tut-c3 10s infinite; }
+  @keyframes tut-cursor {
+    0% { transform: translate(210px, 370px); opacity: 0; }
+    4% { transform: translate(210px, 370px); opacity: 1; }
+    18%, 26% { transform: translate(530px, 30px); }
+    38%, 48% { transform: translate(430px, 242px); }
+    60%, 70% { transform: translate(280px, 366px); opacity: 1; }
+    76%, 100% { transform: translate(280px, 366px); opacity: 0; }
+  }
+  @keyframes tut-more { 0%, 16% { opacity: 0; } 19%, 28% { opacity: 1; } 32%, 100% { opacity: 0; } }
+  @keyframes tut-more-icon { 0%, 16% { color: var(--muted, #707579); } 19%, 30% { color: var(--accent, #3390ec); } 34%, 100% { color: var(--muted, #707579); } }
+  @keyframes tut-menu { 0%, 21% { opacity: 0; transform: scale(.9); } 24%, 48% { opacity: 1; transform: none; } 51%, 100% { opacity: 0; transform: scale(.96); } }
+  @keyframes tut-hl { 0%, 36% { opacity: 0; } 39%, 49% { opacity: 1; } 51%, 100% { opacity: 0; } }
+  @keyframes tut-dlg { 0%, 50% { opacity: 0; } 53%, 72% { opacity: 1; } 75%, 100% { opacity: 0; } }
+  @keyframes tut-btn { 0%, 64% { fill: var(--accent, #3390ec); } 66%, 70% { fill: var(--accent-2, #2a7fd4); } 72%, 100% { fill: var(--accent, #3390ec); } }
+  @keyframes tut-c1 { 0%, 20% { opacity: 0; transform: scale(.3); } 21% { opacity: .45; transform: scale(.35); } 27%, 100% { opacity: 0; transform: scale(1.2); } }
+  @keyframes tut-c2 { 0%, 44% { opacity: 0; transform: scale(.3); } 45% { opacity: .45; transform: scale(.35); } 51%, 100% { opacity: 0; transform: scale(1.2); } }
+  @keyframes tut-c3 { 0%, 65% { opacity: 0; transform: scale(.3); } 66% { opacity: .45; transform: scale(.35); } 72%, 100% { opacity: 0; transform: scale(1.2); } }
+  @media (prefers-reduced-motion: reduce) {
+    /* One still frame that tells the whole story: menu open, the export item under the cursor. */
+    .tut-cursor { transform: translate(430px, 242px); opacity: 1; }
+    .tut-menu, .tut-hl { opacity: 1; transform: none; }
+    .tut-more-bg { opacity: 1; }
+    .tut-dlg, .tut-click { opacity: 0; }
+  }
+  </style>
+  <title id="tut-title">How to export a chat in Telegram Desktop: open the chat, click the three dots in the top right corner, choose Export Chat History and click Export. Then drop the exported folder here.</title>
+  <defs>
+    <symbol id="tut-i-bell-off" viewBox="0 0 24 24"><path d="M6.5 16.5V10a5.5 5.5 0 0 1 11 0v6.5l1.5 1.5H5zM10 20.5a2 2 0 0 0 4 0M4 4l16 16"/></symbol>
+    <symbol id="tut-i-brush" viewBox="0 0 24 24"><path d="M18.5 3.5a2 2 0 0 1 2 2c0 3-6 9-8.5 10.5l-2-2C11.5 11.5 15.5 3.5 18.5 3.5zM9.5 13.5c-2 0-3.5 1.5-3.5 3.5 0 1.5-1 2.5-2.5 2.5 1 1 2.5 1.5 4 1.5 2.5 0 4-1.5 4-3.5"/></symbol>
+    <symbol id="tut-i-chev-down" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></symbol>
+    <symbol id="tut-i-chev-right" viewBox="0 0 24 24"><path d="m9 5 7 7-7 7"/></symbol>
+    <symbol id="tut-i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></symbol>
+    <symbol id="tut-i-edit" viewBox="0 0 24 24"><path d="M14.5 6.5l3 3M4.5 19.5l.9-4.1L15.6 5.2a2.1 2.1 0 0 1 3 0l.2.2a2.1 2.1 0 0 1 0 3L8.6 18.6z"/></symbol>
+    <symbol id="tut-i-file" viewBox="0 0 24 24"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/></symbol>
+    <symbol id="tut-i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v5.5"/><circle cx="12" cy="7.8" r="1.2" fill="currentColor" stroke="none"/></symbol>
+    <symbol id="tut-i-more-h" viewBox="0 0 24 24"><circle cx="5.5" cy="12" r="1.7" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.7" fill="currentColor" stroke="none"/><circle cx="18.5" cy="12" r="1.7" fill="currentColor" stroke="none"/></symbol>
+    <symbol id="tut-i-phone" viewBox="0 0 24 24"><path d="M6.6 3.5h2.6l1.4 4-2 1.5a11 11 0 0 0 6.4 6.4l1.5-2 4 1.4v2.6a2 2 0 0 1-2.2 2A16.5 16.5 0 0 1 4.6 5.7a2 2 0 0 1 2-2.2z"/></symbol>
+    <symbol id="tut-i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="m16 16 4.5 4.5"/></symbol>
+    <symbol id="tut-i-trash" viewBox="0 0 24 24"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12M9 7V4.5A.5.5 0 0 1 9.5 4h5a.5.5 0 0 1 .5.5V7"/></symbol>
+    <symbol id="tut-i-users" viewBox="0 0 24 24"><path d="M16 20.5v-1.5a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v1.5"/><circle cx="9" cy="7.5" r="3.5"/><path d="M22 20.5v-1.5a4 4 0 0 0-3-3.87M16 4.13a3.5 3.5 0 0 1 0 6.74"/></symbol>
+    <symbol id="tut-i-video" viewBox="0 0 24 24"><rect x="3" y="6.5" width="12.5" height="11" rx="2.5"/><path d="m15.5 10.5 5-3v9l-5-3z"/></symbol>
+    <symbol id="tut-i-x-circle" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="m9 9 6 6M15 9l-6 6"/></symbol>
+    <clipPath id="tut-win"><rect width="560" height="400" rx="18"/></clipPath>
+    <clipPath id="tut-photo-clip"><rect x="16" y="118" width="210" height="124" rx="16"/></clipPath>
+    <linearGradient id="tut-av" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#7fe0cf"/><stop offset="1" stop-color="#3aa6d8"/></linearGradient>
+    <linearGradient id="tut-sky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#27285a"/><stop offset=".55" stop-color="#b5527a"/><stop offset="1" stop-color="#f6a35c"/></linearGradient>
+  </defs>
+  <g clip-path="url(#tut-win)">
+    <rect class="tut-bg" width="560" height="400"/>
+
+    <!-- messages -->
+    <g class="tut-msgs">
+      <rect class="tut-in" x="16" y="76" width="218" height="34" rx="16"/>
+      <text class="tut-t" x="30" y="98">remember the roof? 🌙</text><text class="tut-time" x="222" y="102" text-anchor="end">21:04</text>
+
+      <g clip-path="url(#tut-photo-clip)">
+        <rect x="16" y="118" width="210" height="124" fill="url(#tut-sky)"/>
+        <circle cx="178" cy="146" r="11" fill="#fff5dc"/>
+        <path d="M16 214 70 196l42 9 38-16 76 20v33H16z" fill="#1d1830"/>
+        <path d="M52 205v-18l17-13 17 13v18z" fill="#14111f"/>
+        <circle cx="60" cy="168" r="1.4" fill="#fff"/><circle cx="118" cy="140" r="1.1" fill="#fff"/><circle cx="96" cy="160" r="1" fill="#fff"/>
+        <rect x="178" y="221" width="40" height="16" rx="8" fill="rgba(0,0,0,.4)"/>
+        <text class="tut-time-on" x="198" y="233" text-anchor="middle">21:05</text>
+      </g>
+
+      <rect class="tut-out" x="304" y="252" width="240" height="34" rx="16"/>
+      <text class="tut-t tut-t-out" x="318" y="274">every night, same spot</text>
+      <text class="tut-time tut-time-out" x="514" y="278" text-anchor="end">21:06</text>
+      <path class="tut-ticks" d="M518 273l2.5 2.5 5-5.5M523 275.5l1 1 5-5.5"/>
+
+      <rect class="tut-in" x="16" y="296" width="184" height="34" rx="16"/>
+      <text class="tut-t" x="30" y="318">send me that one</text><text class="tut-time" x="188" y="322" text-anchor="end">21:07</text>
+
+      <rect class="tut-out" x="406" y="340" width="138" height="34" rx="16"/>
+      <text class="tut-t tut-t-out" x="420" y="362">on it ✨</text>
+      <text class="tut-time tut-time-out" x="514" y="366" text-anchor="end">21:07</text>
+      <path class="tut-ticks" d="M518 361l2.5 2.5 5-5.5M523 363.5l1 1 5-5.5"/>
+    </g>
+
+    <!-- header -->
+    <rect class="tut-panel" width="560" height="60"/>
+    <path class="tut-line" d="M0 60.5h560"/>
+    <circle cx="36" cy="30" r="19" fill="url(#tut-av)"/>
+    <text x="36" y="35.5" text-anchor="middle" class="tut-av-t">MS</text>
+    <text class="tut-name" x="66" y="26">Mira Stone</text>
+    <text class="tut-sub" x="66" y="45">last seen recently</text>
+    <circle class="tut-more-bg" cx="530" cy="30" r="17"/>
+    <use class="tut-hicon" href="#tut-i-phone" x="439" y="19" width="22" height="22"/>
+    <use class="tut-hicon" href="#tut-i-search" x="479" y="19" width="22" height="22"/>
+    <use class="tut-hicon tut-more" href="#tut-i-more-h" x="519" y="19" width="22" height="22"/>
+
+    <!-- context menu -->
+    <g class="tut-menu">
+      <rect class="tut-menu-bg" x="300" y="52" width="244" height="305" rx="14"/>
+      <rect class="tut-hl" x="306" y="228" width="232" height="28" rx="8"/>
+      <g class="tut-mi">
+        <use href="#tut-i-edit" x="316" y="65" width="18" height="18"/><text x="346" y="79">Edit</text>
+        <use href="#tut-i-info" x="316" y="93" width="18" height="18"/><text x="346" y="107">Info</text>
+        <use href="#tut-i-bell-off" x="316" y="121" width="18" height="18"/><text x="346" y="135">Mute</text>
+        <use href="#tut-i-video" x="316" y="149" width="18" height="18"/><text x="346" y="163">Video</text>
+        <use href="#tut-i-users" x="316" y="177" width="18" height="18"/><text x="346" y="191">Create Group</text>
+        <use href="#tut-i-brush" x="316" y="205" width="18" height="18"/><text x="346" y="219">Change Wallpaper</text>
+        <use href="#tut-i-file" x="316" y="233" width="18" height="18"/><text x="346" y="247" class="tut-export">Export Chat History…</text>
+        <path class="tut-line" d="M314 264.5h216"/>
+        <use href="#tut-i-clock" x="316" y="270" width="18" height="18"/><text x="346" y="284">Auto-Delete Messages</text>
+        <use href="#tut-i-chev-right" x="514" y="271" width="16" height="16"/>
+        <use href="#tut-i-x-circle" x="316" y="298" width="18" height="18"/><text x="346" y="312">Clear Chat History</text>
+        <g class="tut-danger"><use href="#tut-i-trash" x="316" y="326" width="18" height="18"/><text x="346" y="340">Delete Chat</text></g>
+      </g>
+    </g>
+
+    <!-- export window (as in the Telegram client) -->
+    <g class="tut-dlg">
+      <rect width="560" height="400" fill="rgba(0,0,0,.32)"/>
+      <g class="tut-sheet">
+        <rect class="tut-menu-bg" x="165" y="22" width="230" height="370" rx="20"/>
+        <circle class="tut-row" cx="191" cy="47" r="13"/>
+        <path class="tut-x" d="m186.5 42.5 9 9m0-9-9 9"/>
+        <text class="tut-name tut-c" x="280" y="52" text-anchor="middle">Export Chat</text>
+        <g class="tut-mi">
+          <rect class="tut-row" x="177" y="74" width="206" height="34" rx="12"/>
+          <text x="189" y="95.5">Media</text><text class="tut-val" x="230" y="95.5">7/7</text>
+          <use href="#tut-i-chev-down" x="251" y="85" width="12" height="12"/>
+          <rect class="tut-sw" x="343" y="81" width="30" height="20" rx="10"/><circle cx="363" cy="91" r="8" fill="#fff"/>
+
+          <text class="tut-cap" x="189" y="126">SIZE LIMIT</text>
+          <rect class="tut-row" x="177" y="132" width="206" height="34" rx="12"/>
+          <text x="189" y="153.5">Maximum File Size</text><text class="tut-val" x="360" y="153.5" text-anchor="end">10 MB</text>
+          <use class="tut-chev" href="#tut-i-chev-right" x="361" y="143" width="12" height="12"/>
+          <text class="tut-note" x="189" y="182">Larger media files are skipped.</text>
+
+          <text class="tut-cap" x="189" y="206">DATE RANGE</text>
+          <rect class="tut-row" x="177" y="212" width="206" height="64" rx="12"/>
+          <text x="189" y="233.5">From</text><text class="tut-val" x="360" y="233.5" text-anchor="end">Oldest Message</text>
+          <use class="tut-chev" href="#tut-i-chev-right" x="361" y="223" width="12" height="12"/>
+          <path class="tut-line" d="M189 244.5h182"/>
+          <text x="189" y="265.5">To</text><text class="tut-val" x="360" y="265.5" text-anchor="end">Present</text>
+          <use class="tut-chev" href="#tut-i-chev-right" x="361" y="255" width="12" height="12"/>
+
+          <text class="tut-cap" x="189" y="298">SAVE TO</text>
+          <rect class="tut-row" x="177" y="304" width="206" height="34" rx="12"/>
+          <text x="189" y="325.5">Folder</text><text class="tut-val" x="371" y="325.5" text-anchor="end">Export</text>
+        </g>
+        <rect class="tut-btn" x="177" y="350" width="206" height="32" rx="16"/>
+        <text class="tut-btn-t" x="280" y="371" text-anchor="middle">Export</text>
+      </g>
+    </g>
+
+    <circle class="tut-click c1" cx="530" cy="30" r="16"/>
+    <circle class="tut-click c2" cx="430" cy="242" r="16"/>
+    <circle class="tut-click c3" cx="280" cy="366" r="16"/>
+    <g class="tut-cursor"><path d="M0 0v18.5l4.6-4.2 3.2 7.2 3.2-1.4-3.1-7H14z" fill="#fff" stroke="#111" stroke-width="1.3" stroke-linejoin="round"/></g>
+  </g>
+  <rect class="tut-frame" x=".5" y=".5" width="559" height="399" rx="17.5"/>
+</svg>

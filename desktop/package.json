@@ -1,0 +1,13 @@
+{
+  "name": "rooftop-desktop",
+  "private": true,
+  "version": "0.1.0",
+  "scripts": {
+    "tauri": "tauri",
+    "build": "node build.mjs",
+    "build:debug": "node build.mjs --debug"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "3.0.0-alpha.5"
+  }
+}

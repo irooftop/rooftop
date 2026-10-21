@@ -1,0 +1,35 @@
+{
+  "$schema": "https://schema.tauri.app/config/3.0.0-alpha.5",
+  "productName": "iRoof.top",
+  "version": "0.1.0",
+  "identifier": "top.iroof.desktop",
+  "build": {
+    "frontendDist": "./dist"
+  },
+  "app": {
+    "withGlobalTauri": false,
+    "windows": [],
+    "security": {
+      "capabilities": []
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "publisher": "iRoof.top",
+    "homepage": "https://iroof.top",
+    "category": "Productivity",
+    "shortDescription": "Continue a Telegram or WhatsApp chat with an LLM that writes like the person in the export.",
+    "license": "MIT",
+    "macOS": {
+      "minimumSystemVersion": "11.0"
+    }
+  }
+}

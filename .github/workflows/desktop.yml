@@ -1,0 +1,169 @@
+# iRoof.top desktop app (Tauri 3.0.0-alpha.5, crate + config in ./desktop).
+#
+#  * push to main / pull requests touching the desktop app or the library: `cargo check` on Linux.
+#  * tag `vX.Y.Z` (or manual run): build installers for macOS (arm64 + x64), Windows and Linux and
+#    attach them to a DRAFT GitHub Release for that tag. Manual runs only upload workflow artifacts.
+#
+# The release job drives the pinned Tauri CLI (desktop/package.json) directly and uploads with `gh`,
+# instead of tauri-apps/tauri-action, because the action's support for the Tauri 3 alpha CLI is not documented.
+name: desktop
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*.*.*']
+    paths:
+      - 'desktop/**'
+      - 'src/**'
+      - 'web/**'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - '.github/workflows/desktop.yml'
+  pull_request:
+    paths:
+      - 'desktop/**'
+      - 'src/**'
+      - 'web/**'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - '.github/workflows/desktop.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: desktop-${{ github.ref }}
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
+
+env:
+  CARGO_TERM_COLOR: always
+  LINUX_DEPS: >-
+    libwebkit2gtk-4.1-dev build-essential curl wget file libxdo-dev libssl-dev
+    librsvg2-dev patchelf xdg-utils
+
+jobs:
+  check:
+    if: ${{ !startsWith(github.ref, 'refs/tags/') && github.event_name != 'workflow_dispatch' }}
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install Linux system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y $LINUX_DEPS
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: desktop -> target
+      - name: cargo check (desktop)
+        working-directory: desktop
+        run: cargo check --locked --message-format=short
+
+  release:
+    if: ${{ startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch' }}
+    permissions:
+      contents: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest # Apple Silicon runner
+            target: aarch64-apple-darwin
+          - os: macos-latest # cross-compile for Intel Macs
+            target: x86_64-apple-darwin
+          - os: ubuntu-22.04
+            target: ''
+          - os: windows-latest
+            target: ''
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install Linux system dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y $LINUX_DEPS
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: lts/*
+          cache: npm
+          cache-dependency-path: desktop/package-lock.json
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: desktop -> target
+          key: ${{ matrix.target }}
+
+      - name: Install Tauri CLI (pinned in desktop/package.json)
+        working-directory: desktop
+        run: npm ci
+
+      # Tag vX.Y.Z -> app version X.Y.Z (overrides desktop/tauri.conf.json). Must be numeric
+      # (no pre-release suffix) for the Windows MSI bundle. Manual runs keep the configured version.
+      - name: Resolve app version
+        id: ver
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            echo "config={\"version\":\"${GITHUB_REF_NAME#v}\"}" >> "$GITHUB_OUTPUT"
+          else
+            echo 'config={}' >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Build installers
+        working-directory: desktop
+        env:
+          # macOS: ad-hoc signing ("-") keeps Apple Silicon builds from being reported as "damaged"
+          # after download. To sign + notarize with a Developer ID, add repository secrets and
+          # uncomment (also import the certificate, see https://v3.tauri.app/distribute/sign/macos/):
+          #   APPLE_CERTIFICATE, APPLE_CERTIFICATE_PASSWORD, APPLE_SIGNING_IDENTITY,
+          #   APPLE_ID, APPLE_PASSWORD, APPLE_TEAM_ID
+          APPLE_SIGNING_IDENTITY: '-'
+          # APPLE_ID: ${{ secrets.APPLE_ID }}
+          # APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          # APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          # Windows: configure bundle.windows.signCommand / certificate per
+          # https://v3.tauri.app/distribute/sign/windows/ and pass its secrets here.
+        run: |
+          args=(--config '${{ steps.ver.outputs.config }}')
+          if [[ -n "${{ matrix.target }}" ]]; then args+=(--target "${{ matrix.target }}"); fi
+          # tauri.macos.conf.json defaults local builds to the .app only, but releases also ship the DMG
+          # (CI=true makes the bundler skip the Finder AppleScript).
+          if [[ "$RUNNER_OS" == "macOS" ]]; then args+=(--bundles app,dmg); fi
+          npx tauri build "${args[@]}"
+
+      - name: Collect installers
+        run: |
+          mkdir -p dist-out
+          find desktop/target -path '*/release/bundle/*' -type f \
+            \( -name '*.dmg' -o -name '*.msi' -o -name '*-setup.exe' -o -name '*.deb' -o -name '*.rpm' -o -name '*.AppImage' \) \
+            -exec cp -v {} dist-out/ \;
+          ls -la dist-out
+          test -n "$(ls -A dist-out)"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: installers-${{ matrix.os }}-${{ matrix.target || 'native' }}
+          path: dist-out/*
+          if-no-files-found: error
+
+      - name: Upload to draft GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          # Matrix jobs race to create the release, and whoever loses just uploads.
+          gh release view "$TAG" >/dev/null 2>&1 || gh release create "$TAG" --draft --title "iRoof.top $TAG" \
+            --notes "Desktop installers (unsigned unless signing secrets are configured)." \
+            || gh release view "$TAG" >/dev/null
+          gh release upload "$TAG" dist-out/* --clobber

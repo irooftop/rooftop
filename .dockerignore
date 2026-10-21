@@ -1,0 +1,12 @@
+target
+data
+.env
+.env.*
+.git
+.github
+.agent-logs
+.DS_Store
+ChatExport*
+tests
+desktop
+exports
