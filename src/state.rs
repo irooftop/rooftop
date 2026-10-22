@@ -19,8 +19,14 @@ pub struct AppState {
     pub import_lock: Mutex<()>,
     /// PIN brute-force protection and guest rate limits.
     pub limiter: std::sync::Mutex<crate::share::Limiter>,
-    /// Telegram relay for share links, set when a bot token is configured.
-    pub telegram: std::sync::OnceLock<Arc<crate::tgbot::Bot>>,
+    /// Telegram relay for share links, while a bot is configured.
+    pub telegram: std::sync::RwLock<Option<Arc<crate::tgbot::Bot>>>,
+    /// Bot from `TELEGRAM_BOT_TOKEN`: wins over the bot chosen in Settings.
+    pub telegram_env: std::sync::OnceLock<crate::tgbot::BotConfig>,
+    /// Local network / internet sharing, when the owner UI runs on this device.
+    pub sharing: std::sync::OnceLock<Arc<crate::sharing::Sharing>>,
+    /// Serializes reconfiguration of the bot and of sharing.
+    pub control: Mutex<()>,
 }
 
 pub fn now_local() -> chrono::NaiveDateTime {
@@ -44,6 +50,9 @@ impl AppState {
             import_lock: Mutex::new(()),
             limiter: Default::default(),
             telegram: Default::default(),
+            telegram_env: Default::default(),
+            sharing: Default::default(),
+            control: Mutex::new(()),
         })
     }
 

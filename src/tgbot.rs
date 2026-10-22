@@ -21,6 +21,7 @@ use crate::chat::Event;
 use crate::model::Message;
 use crate::share::{GuestSession, Share};
 use crate::state::{AppState, now_string};
+use crate::store::TelegramMode;
 use anyhow::{Result, anyhow, bail};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -41,13 +42,34 @@ const FOLLOW_UP: Duration = Duration::from_secs(2 * 60);
 /// Telegram's message length limit is 4096 characters.
 const MAX_TEXT: usize = 3500;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum BotSource {
+    /// `TELEGRAM_BOT_TOKEN`.
+    Env,
+    /// The owner's own bot, from Settings.
+    Own,
+    /// The relay hub's shared bot ([`crate::relay_tg`]).
+    Shared,
+}
+
 #[derive(Debug, Clone)]
 pub struct BotConfig {
     pub token: String,
-    /// Bot API base URL, `https://api.telegram.org` (or a local Bot API server).
+    /// Bot API base URL, `https://api.telegram.org` (or a local Bot API server, or the relay hub).
     pub api_base: String,
     /// Groups the relay may use. Empty: every group the bot is added to.
     pub allowed_chats: Vec<i64>,
+    pub source: BotSource,
+}
+
+/// Bot API base URL from `TELEGRAM_API_URL`, or Telegram's.
+pub fn default_api_base() -> String {
+    std::env::var("TELEGRAM_API_URL")
+        .ok()
+        .map(|v| v.trim().to_string())
+        .filter(|v| !v.is_empty())
+        .unwrap_or_else(|| "https://api.telegram.org".into())
 }
 
 /// A relayed Telegram message and the visitor conversation it belongs to.
@@ -64,6 +86,9 @@ struct Thread {
 
 #[derive(Debug, Default, Serialize, Deserialize)]
 struct Persisted {
+    /// The bot these groups belong to (another token starts afresh).
+    #[serde(default)]
+    bot_id: Option<i64>,
     /// Groups the bot is a member of: id → title.
     #[serde(default)]
     groups: BTreeMap<i64, String>,
@@ -109,6 +134,10 @@ pub struct Bot {
     answering: std::sync::Mutex<HashMap<(i64, i64), Answering>>,
     /// Serializes relaying of visitor messages (keeps their order in the group).
     relay_lock: tokio::sync::Mutex<()>,
+    /// Why the bot can't work right now (wrong token, relay unreachable…).
+    last_error: std::sync::Mutex<Option<String>>,
+    /// The polling task.
+    task: std::sync::Mutex<Option<tokio::task::AbortHandle>>,
 }
 
 fn esc(s: &str) -> String {
@@ -133,7 +162,8 @@ impl Bot {
     pub fn new(cfg: BotConfig, data_dir: &std::path::Path) -> Arc<Self> {
         crate::llm::ensure_crypto_provider();
         let http = reqwest::Client::builder().connect_timeout(Duration::from_secs(20)).build().expect("http client");
-        let path = data_dir.join("telegram.json");
+        let file = if cfg.source == BotSource::Shared { "telegram-shared.json" } else { "telegram.json" };
+        let path = data_dir.join(file);
         let data = std::fs::read(&path).ok().and_then(|b| serde_json::from_slice::<Persisted>(&b).ok()).unwrap_or_default();
         Arc::new(Self {
             cfg,
@@ -147,7 +177,17 @@ impl Bot {
             reads_all: Default::default(),
             answering: Default::default(),
             relay_lock: Default::default(),
+            last_error: Default::default(),
+            task: Default::default(),
         })
+    }
+
+    fn set_error(&self, e: Option<String>) {
+        *self.last_error.lock().expect("tg error") = e;
+    }
+
+    pub fn source(&self) -> BotSource {
+        self.cfg.source
     }
 
     fn save(&self) {
@@ -337,8 +377,8 @@ fn keyboard(chat_id: &str, seq: u64, countdown: Option<u32>) -> Value {
     ]]})
 }
 
-fn bot(st: &AppState) -> Option<&Arc<Bot>> {
-    st.telegram.get()
+fn bot(st: &AppState) -> Option<Arc<Bot>> {
+    st.telegram.read().expect("tg bot").clone()
 }
 
 /// Whether visitor messages of `share` go to Telegram (instead of the AI answering directly).
@@ -358,7 +398,7 @@ fn guest_name(session: &GuestSession) -> String {
 /// and starts the AI countdown. Errors are logged: the visitor's message is
 /// already stored, and the AI still answers if Telegram is unreachable.
 pub async fn relay_guest_message(st: &Arc<AppState>, share: &Share, session: &GuestSession, msg_id: i64) {
-    let (Some(bot), Some(tg_chat)) = (bot(st).cloned(), share.telegram_chat_id) else { return };
+    let (Some(bot), Some(tg_chat)) = (bot(st), share.telegram_chat_id) else { return };
     let _order = bot.relay_lock.lock().await;
     let chat_id = session.chat_id.clone();
     let Ok((rec, chat)) = st.snapshot(&chat_id).await else { return };
@@ -425,7 +465,7 @@ fn bot_take(st: &AppState, chat_id: &str, seq: Option<u64>) -> Option<Pending> {
 
 /// Runs the persona for a taken pending answer and posts what it said.
 async fn ai_answer(st: Arc<AppState>, chat_id: String, p: Pending) {
-    let Some(bot) = bot(&st).cloned() else { return };
+    let Some(bot) = bot(&st) else { return };
     bot.stop_answering(&chat_id);
     if let Some(msg) = p.tg_msg {
         bot.strip_keyboard(p.tg_chat, msg).await;
@@ -479,34 +519,132 @@ async fn ai_answer(st: Arc<AppState>, chat_id: String, p: Pending) {
     }
 }
 
-/// Starts the bot: resolves its identity and polls for updates in the background.
+/// Starts the bot (replacing a running one): resolves its identity and polls
+/// for updates in the background.
 pub fn start(st: &Arc<AppState>, cfg: BotConfig) -> Result<()> {
     if cfg.token.trim().is_empty() {
         bail!("empty Telegram bot token");
     }
+    stop(st);
     let bot = Bot::new(cfg, &st.paths.root);
-    st.telegram.set(bot).map_err(|_| anyhow!("the Telegram bot is already running"))?;
-    let st = st.clone();
-    tokio::spawn(async move { run(st).await });
+    *st.telegram.write().expect("tg bot") = Some(bot.clone());
+    let task = tokio::spawn(run(st.clone(), bot.clone()));
+    *bot.task.lock().expect("tg task") = Some(task.abort_handle());
     Ok(())
 }
 
-async fn run(st: Arc<AppState>) {
-    let Some(bot) = bot(&st).cloned() else { return };
+/// Stops the bot. Pending countdowns end without an answer from Telegram.
+pub fn stop(st: &AppState) {
+    if let Some(old) = st.telegram.write().expect("tg bot").take() {
+        if let Some(t) = old.task.lock().expect("tg task").take() {
+            t.abort();
+        }
+        for (_, p) in old.pending.lock().expect("tg pending").drain() {
+            if let Some(t) = p.timer {
+                t.abort();
+            }
+        }
+    }
+}
+
+/// Uses `TELEGRAM_BOT_TOKEN` for the bot (it wins over Settings).
+pub fn set_env_bot(st: &Arc<AppState>, cfg: BotConfig) -> Result<()> {
+    let _ = st.telegram_env.set(cfg.clone());
+    start(st, cfg)
+}
+
+/// Starts, switches or stops the bot to match Settings → Telegram.
+pub async fn apply(st: &Arc<AppState>) -> Result<()> {
+    if st.telegram_env.get().is_some() {
+        return Ok(());
+    }
+    let tg = st.db.read().await.settings.telegram.clone();
+    let cfg = match tg.mode {
+        TelegramMode::Off => None,
+        TelegramMode::Own if tg.token.trim().is_empty() => None,
+        TelegramMode::Own => Some(BotConfig {
+            token: tg.token.trim().to_string(),
+            api_base: default_api_base(),
+            allowed_chats: Vec::new(),
+            source: BotSource::Own,
+        }),
+        TelegramMode::Shared => {
+            let (base, secret, _) = crate::sharing::ensure_account(st, false).await.map_err(|e| anyhow!("{e}"))?;
+            Some(BotConfig {
+                token: secret,
+                api_base: format!("{base}{}", crate::relay_proto::TG_PATH),
+                allowed_chats: Vec::new(),
+                source: BotSource::Shared,
+            })
+        }
+    };
+    let same = match (&cfg, bot(st)) {
+        (Some(c), Some(b)) => b.cfg.token == c.token && b.cfg.api_base == c.api_base && b.cfg.source == c.source,
+        (None, None) => true,
+        _ => false,
+    };
+    if same {
+        return Ok(());
+    }
+    match cfg {
+        Some(c) => start(st, c),
+        None => {
+            stop(st);
+            Ok(())
+        }
+    }
+}
+
+async fn run(st: Arc<AppState>, bot: Arc<Bot>) {
+    let mut wait = 5;
     loop {
         match bot.call("getMe", json!({})).await {
             Ok(me) => {
                 let id = me["id"].as_i64().unwrap_or_default();
                 let name = me["username"].as_str().unwrap_or_default().to_string();
                 tracing::info!("Telegram bot @{name} connected");
+                bot.set_error(None);
+                // Another bot: the groups and threads of the previous one don't apply.
+                let switched = {
+                    let mut d = bot.data.lock().expect("tg data");
+                    let switched = d.bot_id.is_some_and(|b| b != id);
+                    if switched {
+                        d.groups.clear();
+                        d.threads.clear();
+                    }
+                    let changed = switched || d.bot_id != Some(id);
+                    d.bot_id = Some(id);
+                    changed
+                };
+                if switched {
+                    tracing::info!("Telegram bot changed, forgetting the groups of the previous one");
+                }
+                bot.save();
                 // Privacy mode off: an answer can also be a plain message after pressing Reply.
                 bot.reads_all.store(me["can_read_all_group_messages"] == json!(true), Ordering::Relaxed);
                 *bot.me.lock().expect("tg me") = Some((id, name));
                 break;
             }
             Err(e) => {
-                tracing::warn!("Telegram bot: {e:#}, retrying in 15 s");
-                tokio::time::sleep(Duration::from_secs(15)).await;
+                let msg = e.to_string();
+                tracing::warn!("Telegram bot: {msg}, retrying in {wait} s");
+                let unauthorized = msg.contains("Unauthorized") || msg.contains("Not Found");
+                let no_shared = msg.contains("no shared bot");
+                bot.set_error(Some(match (bot.cfg.source, unauthorized) {
+                    _ if no_shared => "This relay doesn't offer a shared bot. Use your own bot instead.".to_string(),
+                    (BotSource::Shared, true) => "The relay doesn't know this app yet, registering again…".to_string(),
+                    (_, true) => "Telegram rejected the bot token. Copy it again from @BotFather.".to_string(),
+                    (BotSource::Shared, false) => format!("Can't reach the shared bot: {msg}"),
+                    _ => format!("Can't reach Telegram: {msg}"),
+                }));
+                if bot.cfg.source == BotSource::Shared && unauthorized {
+                    // The hub lost the account (or it expired): claim it again with the same secret.
+                    if let Err(e) = crate::sharing::ensure_account(&st, true).await {
+                        bot.set_error(Some(e.to_string()));
+                    }
+                }
+                tokio::time::sleep(Duration::from_secs(wait)).await;
+                wait = (wait * 2).min(120);
             }
         }
     }
@@ -524,6 +662,7 @@ async fn run(st: Arc<AppState>) {
         let body = json!({"offset": offset, "timeout": 30, "allowed_updates": ["message", "callback_query", "my_chat_member"]});
         match bot.call("getUpdates", body).await {
             Ok(Value::Array(updates)) => {
+                bot.set_error(None);
                 for u in updates {
                     offset = offset.max(u["update_id"].as_i64().unwrap_or(0) + 1);
                     if let Err(e) = handle_update(&st, &bot, &u).await {
@@ -534,6 +673,11 @@ async fn run(st: Arc<AppState>) {
             Ok(_) => {}
             Err(e) => {
                 let conflict = e.to_string().contains("Conflict");
+                bot.set_error(Some(if conflict {
+                    "Another program uses this bot (or it has a webhook). One bot token works in one place only.".to_string()
+                } else {
+                    format!("{e}")
+                }));
                 tracing::warn!(
                     "{e:#}{}",
                     if conflict { " (another process polls this bot, or a webhook is set: remove it to use the relay)" } else { "" }
@@ -801,11 +945,33 @@ async fn migrate(st: &Arc<AppState>, bot: &Arc<Bot>, old: i64, new: i64) {
 
 /// `GET /api/telegram` (owner): whether the bot runs and which groups can be picked.
 pub async fn status(axum::extract::State(st): axum::extract::State<Arc<AppState>>) -> axum::Json<Value> {
+    let mode = st.db.read().await.settings.telegram.mode;
     let Some(bot) = bot(&st) else {
-        return axum::Json(json!({"enabled": false, "groups": []}));
+        return axum::Json(json!({"enabled": false, "mode": mode, "groups": []}));
     };
     let groups: Vec<Value> = bot.groups().into_iter().map(|(id, title)| json!({"id": id, "title": title})).collect();
-    axum::Json(json!({"enabled": true, "username": bot.username(), "groups": groups}))
+    let error = bot.last_error.lock().expect("tg error").clone();
+    axum::Json(json!({
+        "enabled": true,
+        "mode": mode,
+        "source": bot.source(),
+        "username": bot.username(),
+        "connected": bot.username().is_some() && error.is_none(),
+        "error": error,
+        "groups": groups,
+    }))
+}
+
+/// `POST /api/telegram/link` (owner): a `t.me` link that adds the bot to a group
+/// (for the shared bot, with a one-time code that links the group to this app).
+pub async fn add_link(axum::extract::State(st): axum::extract::State<Arc<AppState>>) -> crate::server::ApiResult {
+    let Some(bot) = bot(&st) else { return Err(crate::server::bad("Telegram isn't set up")) };
+    if bot.source() == BotSource::Shared {
+        let r = bot.call("iroofLink", json!({})).await.map_err(|e| crate::server::bad(format!("{e:#}")))?;
+        return Ok(axum::Json(json!({"url": r["url"], "username": r["username"]})));
+    }
+    let Some(username) = bot.username() else { return Err(crate::server::bad("The bot isn't connected yet")) };
+    Ok(axum::Json(json!({"url": format!("https://t.me/{username}?startgroup=iroof"), "username": username})))
 }
 
 #[cfg(test)]

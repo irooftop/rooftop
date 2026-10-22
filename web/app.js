@@ -926,6 +926,7 @@ $("#settingsBtn").onclick = async () => {
     $("#sBudget").value = s.history_budget_chars; $("#sSteps").value = s.max_tool_steps;
     $("#sMediaModel").value = s.media_model || ""; $("#sMediaModel").placeholder = s.env_media_model || "same as Model";
     $("#sMcp").value = JSON.stringify(s.mcpServers || {}, null, 2);
+    openTgSettings(s.telegram || {});
     hideTip();
     $("#mcpStatus").innerHTML = `<div class="muted small">Checking MCP servers…</div>`;
     $("#sTestResult").className = "test-result hidden";
@@ -934,6 +935,79 @@ $("#settingsBtn").onclick = async () => {
     api("/api/mcp").then(r => renderMcpStatus(r.servers)).catch(e => { $("#mcpStatus").textContent = e.message; });
   } catch (e) { toast(e.message, { error: true }); }
 };
+// Telegram: the mode applies right away (no Save needed), and the status follows the bot.
+const TG = { env: false, mode: "off", relayHost: "iroof.top", link: null, poll: null, busy: false };
+function openTgSettings(t) {
+  TG.env = !!t.env; TG.mode = t.mode || "off"; TG.relayHost = t.relay_host || "iroof.top"; TG.link = null;
+  $$(".tg-relay-host").forEach(e => { e.textContent = TG.relayHost; });
+  setRadio("sTgMode", TG.mode);
+  $$("#sTgModes input").forEach(i => { i.disabled = TG.env; });
+  $("#sTgToken").value = ""; $("#sTgToken").placeholder = t.has_token ? "•••••• (saved, paste a new token to replace it)" : "Bot token from @BotFather, 123456789:AA…";
+  $("#sTgTokenRow").classList.toggle("hidden", TG.mode !== "own" || TG.env);
+  $("#sTgStatus").innerHTML = TG.mode === "off" && !TG.env ? "" : `<div class="muted small">Checking…</div>`;
+  refreshTg();
+  clearInterval(TG.poll);
+  TG.poll = setInterval(() => { if (!document.hidden && (TG.mode !== "off" || TG.env)) refreshTg(); }, 3000);
+}
+$("#settingsDlg").addEventListener("close", () => { clearInterval(TG.poll); TG.poll = null; });
+async function refreshTg() {
+  try { renderTgStatus(await api("/api/telegram")); } catch { }
+}
+function renderTgStatus(t) {
+  const out = $("#sTgStatus");
+  if (!t.enabled) {
+    out.innerHTML = TG.mode === "own" ? `<div class="muted small">Paste the token of your bot and press <b>Connect</b>.</div>`
+      : TG.mode === "shared" ? `<div class="tg-line err small">${esc(t.error || "The shared bot isn't available right now.")}</div>`
+        : `<div class="muted small">Off: visitors of your links talk to the AI only.</div>`;
+    return;
+  }
+  const who = t.username ? `<b>@${esc(t.username)}</b>` : "the bot";
+  const state = t.error ? `<span class="dot err"></span><span class="err">${esc(t.error)}</span>`
+    : t.username ? `<span class="dot ok"></span><span>Connected as ${who}${TG.env ? " (set by TELEGRAM_BOT_TOKEN)" : ""}</span>`
+      : `<span class="dot"></span><span>Connecting…</span>`;
+  const groups = t.groups?.length ? `Groups: ${t.groups.map(g => `<b>${esc(g.title)}</b>`).join(", ")}. Pick one when you edit a share link.` : "No groups yet: add the bot to a group, then pick that group in a share link.";
+  out.innerHTML = `<div class="tg-line small">${state}</div>
+    ${t.username ? `<div class="muted small">${groups}${t.source === "shared" ? ` Messages pass through ${esc(TG.relayHost)}.` : ""}</div>
+    <div class="tg-actions"><button type="button" class="btn sm" id="sTgAdd">${icon("plus")}<span>Add to a group</span></button></div>` : ""}
+    ${TG.link ? `<div class="qr-panel"><img src="${qrSrc(TG.link)}" width="148" height="148" alt="QR code to add the bot to a group"><div class="qr-side"><div class="small">Telegram opened in your browser. Or scan this with your phone: it opens Telegram to pick the group${t.source === "shared" ? " (valid for 1 hour, once)" : ""}.</div><a class="small" href="${esc(TG.link)}" target="_blank" rel="noopener noreferrer">${esc(TG.link)}</a></div></div>` : ""}`;
+  const add = $("#sTgAdd");
+  if (add) add.onclick = async () => {
+    add.disabled = true;
+    try {
+      const r = await api("/api/telegram/link", { method: "POST" });
+      TG.link = r.url; window.open(r.url, "_blank", "noopener");
+      renderTgStatus(t);
+    } catch (e) { toast(e.message, { error: true }); add.disabled = false; }
+  };
+}
+async function setTg(body) {
+  if (TG.busy) return;
+  TG.busy = true; $("#sTgConnect").disabled = true;
+  $("#sTgStatus").innerHTML = `<div class="muted small">${body.mode === "off" ? "Turning off…" : "Connecting…"}</div>`;
+  try {
+    await api("/api/settings", { method: "PUT", body: { telegram: body } });
+    TG.mode = body.mode; TG.link = null;
+    if (body.token) { $("#sTgToken").value = ""; $("#sTgToken").placeholder = "•••••• (saved, paste a new token to replace it)"; }
+    await refreshTg();
+  } catch (e) {
+    $("#sTgStatus").innerHTML = `<div class="tg-line err small">${esc(e.message)}</div>`;
+  } finally { TG.busy = false; $("#sTgConnect").disabled = false; }
+}
+$("#sTgModes").addEventListener("change", () => {
+  const mode = radioValue("sTgMode");
+  $("#sTgTokenRow").classList.toggle("hidden", mode !== "own");
+  // An own bot needs its token first (unless one is saved): Connect applies it.
+  if (mode === "own" && !/saved/.test($("#sTgToken").placeholder)) {
+    TG.mode = "own"; $("#sTgStatus").innerHTML = `<div class="muted small">Paste the token of your bot and press <b>Connect</b>.</div>`; $("#sTgToken").focus(); return;
+  }
+  setTg({ mode });
+});
+$("#sTgConnect").onclick = () => {
+  const token = $("#sTgToken").value.trim();
+  if (!token && !/saved/.test($("#sTgToken").placeholder)) { $("#sTgToken").focus(); return; }
+  setTg(token ? { mode: "own", token } : { mode: "own" });
+};
+$("#sTgToken").addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); $("#sTgConnect").click(); } });
 $("#mcpReconnect").onclick = async () => {
   $("#mcpStatus").innerHTML = `<div class="muted small">Reconnecting…</div>`;
   try { renderMcpStatus((await api("/api/mcp/reconnect", { method: "POST" })).servers); } catch (e) { $("#mcpStatus").textContent = e.message; }
@@ -1539,10 +1613,26 @@ async function autoEnter() {
 }
 
 // ---------- share links (owner) ----------
-const SH = { shares: [], pins: {}, editing: null, tg: { enabled: false, groups: [] } };
+const SH = { shares: [], pins: {}, editing: null, tg: { enabled: false, groups: [] }, net: { available: false }, qr: {} };
 const tgTitle = id => SH.tg.groups.find(g => g.id === id)?.title || "Telegram group";
-const shareUrl = sh => `${location.origin}/s/${enc(sh.slug)}`;
 const isLocalHost = () => ["localhost", "127.0.0.1", "[::1]", "::1"].includes(location.hostname) || location.hostname.endsWith(".localhost");
+// Addresses where the links work, best first: the internet relay, the local network, this page's own origin.
+function linkBases() {
+  const n = SH.net, out = [];
+  if (n.available && n.internet?.enabled && n.internet.url) out.push({ kind: "internet", label: "Internet", base: n.internet.url });
+  if (n.available && n.lan?.enabled && n.lan.url) out.push({ kind: "lan", label: "Wi‑Fi", base: n.lan.url });
+  out.push({ kind: "here", label: isLocalHost() ? "This computer" : location.host, base: location.origin });
+  return out;
+}
+const reachable = () => linkBases().some(b => b.kind !== "here") || !isLocalHost();
+const shareUrl = (sh, base = linkBases()[0].base) => `${base}/s/${enc(sh.slug)}`;
+const hostOf = u => u.replace(/^https?:\/\//, "");
+const QR_NOTE = {
+  internet: "Scan with a phone camera. Works anywhere while iRoof.top runs on this computer.",
+  lan: "Scan with a phone camera. The phone must be on the same Wi‑Fi as this computer.",
+  here: "This address only works on this computer. Turn on Wi‑Fi or Internet sharing to open it on a phone.",
+};
+const qrSrc = text => `/api/qr?text=${encodeURIComponent(text)}`;
 const HIST = { none: "history hidden", recent: "recent history", full: "full history" };
 function fmtWhen(d) { return d ? `${fmtListTime(d)}${d.slice(0, 10) === new Date().toISOString().slice(0, 10) ? "" : ` ${d.slice(11, 16)}`}` : ""; }
 // One dialog, two pages (list ↔ editor), like Telegram's nested settings: no modal on top of a modal.
@@ -1556,12 +1646,13 @@ function sharePage(edit) {
 const shareEditing = () => !$("#shareEditForm").classList.contains("hidden");
 async function openShares({ edit } = {}) {
   try {
-    [SH.shares, SH.tg] = await Promise.all([
+    [SH.shares, SH.tg, SH.net] = await Promise.all([
       api(`/api/chats/${S.chatId}/shares`).then(r => r.shares),
       api("/api/telegram").catch(() => ({ enabled: false, groups: [] })),
+      api("/api/sharing").catch(() => ({ available: false })),
     ]);
     $("#shH").textContent = `Share «${S.chat.chat.title}»`;
-    $("#shLocal").classList.toggle("hidden", !isLocalHost()); $("#shHost").textContent = location.host;
+    renderReach();
     renderShares();
     if (edit !== undefined || !SH.shares.length) openShareEdit(edit || null);
     else sharePage(false);
@@ -1578,7 +1669,11 @@ async function refreshShares({ manual = false } = {}) {
   const btn = $("#shRefresh");
   if (manual) btn.classList.add("spinning");
   try {
-    const shares = (await api(`/api/chats/${S.chatId}/shares`)).shares;
+    const [shares, net] = await Promise.all([api(`/api/chats/${S.chatId}/shares`).then(r => r.shares), api("/api/sharing").catch(() => SH.net)]);
+    if (JSON.stringify(net) !== JSON.stringify(SH.net)) {
+      SH.net = net; renderReach();
+      if (!shareEditing()) renderShares();
+    }
     if (shareSig(shares) !== shareSig(SH.shares)) {
       SH.shares = shares;
       if (!shareEditing()) renderShares();
@@ -1598,6 +1693,7 @@ function renderShares() {
   const opened = new Map([...$$("#shList .share-card")].map(c => [c.dataset.id, c.querySelector("details.sessions")?.open]));
   $("#shList").innerHTML = SH.shares.length ? SH.shares.map(sh => {
     const url = shareUrl(sh);
+    const qrOpen = SH.qr[sh.id];
     const chips = [
       sh.active ? "" : `<span class="chip off">${sh.enabled ? "expired" : "paused"}</span>`,
       sh.has_pin ? `<span class="chip">${icon("lock")}PIN</span>` : `<span class="chip warn">${icon("alert")}no PIN</span>`,
@@ -1618,11 +1714,13 @@ function renderShares() {
         <div class="share-url"><span class="u">${esc(url.replace(/^https?:\/\//, ""))}</span><span class="muted small">as <b>${esc(sh.display_name)}</b></span></div>
         <div class="share-actions">
           <button class="btn sm" data-copy="${esc(sh.id)}" title="Copy link">${icon("copy")}<span>Copy</span></button>
+          <button class="btn sm ${qrOpen ? "on" : ""}" data-qr="${esc(sh.id)}" title="QR code to open the link on a phone" aria-label="QR code" aria-expanded="${qrOpen ? "true" : "false"}">${icon("qr")}</button>
           ${navigator.share ? `<button class="btn sm" data-native="${esc(sh.id)}" title="Share…" aria-label="Share via apps">${icon("share")}</button>` : ""}
           <button class="btn sm" data-edit="${esc(sh.id)}" title="Edit link">${icon("edit")}<span>Edit</span></button>
         </div>
       </div>
       ${SH.pins[sh.id] ? `<div class="pin-once">${icon("lock")}<span>PIN <b class="mono">${esc(SH.pins[sh.id])}</b> (shown only now)</span><button class="btn sm" data-invite="${esc(sh.id)}">${icon("copy")}<span>Copy invite with PIN</span></button></div>` : ""}
+      ${qrOpen ? qrPanel(sh) : ""}
       <div class="chips">${chips}</div>
       ${sessions}
     </div>`;
@@ -1632,6 +1730,67 @@ function renderShares() {
     if (d && was != null) d.open = was;
   }
 }
+// The QR code of a link, inline in its card (no dialog over the dialog), with a switch between addresses.
+function qrPanel(sh) {
+  const bases = linkBases();
+  const pick = bases.find(b => b.kind === SH.qr[sh.id]) || bases[0];
+  const pin = SH.pins[sh.id];
+  // A fresh PIN rides along in the fragment, like in the copied invite.
+  const url = shareUrl(sh, pick.base) + (pin ? `#pin=${encodeURIComponent(pin)}` : "");
+  const tabs = bases.length > 1 ? `<div class="seg qr-tabs" role="radiogroup" aria-label="Address">${bases.map(b => `<label><input type="radio" name="qr-${esc(sh.id)}" value="${b.kind}" data-qr-kind="${b.kind}" data-share="${esc(sh.id)}" ${b === pick ? "checked" : ""}><span>${icon(b.kind === "internet" ? "globe" : b.kind === "lan" ? "wifi" : "user")}${esc(b.label)}</span></label>`).join("")}</div>` : "";
+  return `<div class="qr-panel">
+    <img src="${qrSrc(url)}" width="168" height="168" alt="QR code for ${esc(hostOf(url))}">
+    <div class="qr-side">${tabs}
+      <div class="mono small qr-url">${esc(hostOf(shareUrl(sh, pick.base)))}</div>
+      <div class="muted small">${esc(QR_NOTE[pick.kind])}${pin ? " The PIN is included." : ""}</div>
+    </div>
+  </div>`;
+}
+function renderReach() {
+  const n = SH.net, local = isLocalHost();
+  $("#shReach").classList.toggle("hidden", !n.available);
+  if (n.available) {
+    const lan = n.lan || {}, net = n.internet || {};
+    $("#rLan").checked = !!lan.enabled; $("#rNet").checked = !!net.enabled;
+    const lanText = $("#rLanText");
+    lanText.classList.toggle("err", !!(lan.enabled && lan.error));
+    lanText.textContent = lan.enabled ? (lan.error || `Phones on the same Wi‑Fi open the links at ${hostOf(lan.url || "")}`) : "Phones and computers on the same network can open the links";
+    const netText = $("#rNetText");
+    netText.classList.toggle("err", net.enabled && net.state === "error");
+    netText.textContent = !net.enabled ? `Links work anywhere at your own address on ${net.domain || n.relay_host}, while iRoof.top runs. Visits pass through ${n.relay_host}.`
+      : net.state === "connected" ? `Live at ${hostOf(net.url || "")}`
+        : net.state === "error" ? (net.error || "Can't connect")
+          : `Connecting to ${n.relay_host}…`;
+    $("#rNameForm").classList.toggle("hidden", !net.enabled);
+    $("#rNameSuffix").textContent = `.${net.domain || n.relay_host}`;
+    if (document.activeElement !== $("#rName")) { $("#rName").value = net.name || ""; $("#rNameSave").disabled = true; }
+  }
+  $("#shLocal").classList.toggle("hidden", reachable());
+  $("#shLocalText").innerHTML = n.available
+    ? "For now these links only work on this computer. Turn on <b>Wi‑Fi</b> or <b>Internet</b> above so friends can open them."
+    : `This page is open on <b>${esc(location.host)}</b>, so these links only work on this device. Open iRoof.top via an address your friends can reach to share it.`;
+  if (!local && !n.available) $("#shLocal").classList.add("hidden");
+}
+async function putSharing(body, input) {
+  if (input) input.disabled = true;
+  try { SH.net = await api("/api/sharing", { method: "PUT", body }); }
+  catch (e) { toast(e.message, { error: true }); try { SH.net = await api("/api/sharing"); } catch { } }
+  finally { if (input) input.disabled = false; }
+  renderReach(); if (!shareEditing()) renderShares();
+}
+$("#rLan").onchange = e => putSharing({ lan: e.target.checked }, e.target);
+$("#rNet").onchange = e => putSharing({ internet: e.target.checked }, e.target);
+$("#rName").oninput = () => {
+  const v = $("#rName").value.trim().toLowerCase();
+  $("#rNameSave").disabled = !v || v === (SH.net.internet?.name || "");
+};
+$("#rNameForm").addEventListener("submit", async e => {
+  e.preventDefault();
+  const name = $("#rName").value.trim().toLowerCase();
+  $("#rName").blur();
+  await putSharing({ name }, $("#rNameSave"));
+  if (SH.net.internet?.name === name) toast(`Links now live at ${hostOf(SH.net.internet.url || "")}`);
+});
 function inviteText(sh, withPin) {
   const pin = SH.pins[sh.id];
   // The PIN rides in the fragment (#pin=…): one tap opens the chat, and it never reaches server logs.
@@ -1642,8 +1801,9 @@ function inviteText(sh, withPin) {
 }
 $("#shList").addEventListener("click", async e => {
   const b = e.target.closest("button,a"); if (!b) return;
-  const sh = SH.shares.find(x => x.id === (b.dataset.copy || b.dataset.native || b.dataset.edit || b.dataset.invite || b.dataset.share));
-  if (b.dataset.copy) copyWithFeedback(b, shareUrl(sh), "Copied");
+  const sh = SH.shares.find(x => x.id === (b.dataset.copy || b.dataset.qr || b.dataset.native || b.dataset.edit || b.dataset.invite || b.dataset.share));
+  if (b.dataset.qr) { SH.qr[sh.id] = SH.qr[sh.id] ? undefined : (linkBases()[0].kind); renderShares(); }
+  else if (b.dataset.copy) copyWithFeedback(b, shareUrl(sh), "Copied");
   else if (b.dataset.invite) copyWithFeedback(b, inviteText(sh, true), "Invite copied");
   else if (b.dataset.native) navigator.share({ title: sh.display_name, text: inviteText(sh, false), url: shareUrl(sh) }).catch(() => { });
   else if (b.dataset.edit) openShareEdit(sh);
@@ -1652,6 +1812,10 @@ $("#shList").addEventListener("click", async e => {
     try { const r = await api(`/api/shares/${sh.id}/sessions/${b.dataset.end}`, { method: "DELETE" }); Object.assign(sh, r); renderShares(); loadState().catch(() => { }); }
     catch (err) { toast(err.message, { error: true }); }
   } else if (b.hasAttribute("data-open-session")) $("#shareDlg").close();
+});
+$("#shList").addEventListener("change", e => {
+  const r = e.target.closest("[data-qr-kind]"); if (!r) return;
+  SH.qr[r.dataset.share] = r.dataset.qrKind; renderShares();
 });
 $("#shareBtn").onclick = () => openShares();
 $("#shNew").onclick = () => openShareEdit(null);
@@ -1705,7 +1869,7 @@ function openShareEdit(sh) {
   $("#seH").textContent = sh ? `Edit /s/${sh.slug}` : "New link";
   $("#seSave").textContent = sh ? "Save" : "Create link";
   $("#seDelete").classList.toggle("hidden", !sh);
-  $("#seOrigin").textContent = `${location.host}/s/`;
+  $("#seOrigin").textContent = `${hostOf(linkBases()[0].base)}/s/`;
   $("#seSlug").value = sh?.slug || "";
   $("#seName").value = sh?.display_name || S.chat.chat.persona;
   $("#sePin").value = ""; $("#sePin").placeholder = sh?.has_pin ? "set · type to change" : "none";

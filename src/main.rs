@@ -51,6 +51,17 @@ struct ServeArgs {
     /// Telegram Bot API base URL (e.g. a self-hosted Bot API server).
     #[arg(long, env = "TELEGRAM_API_URL", default_value = "https://api.telegram.org")]
     telegram_api: String,
+    /// Run a relay hub for this domain (e.g. iroof.top): iRoof.top apps publish their
+    /// share links at https://<name>.<domain>. Needs a wildcard DNS record and certificate.
+    #[arg(long, env = "ROOFTOP_RELAY_DOMAIN")]
+    relay_domain: Option<String>,
+    /// Shared Telegram bot of the relay hub, for apps without a bot of their own.
+    /// Must not be the TELEGRAM_BOT_TOKEN bot (one token allows one poller).
+    #[arg(long, env = "ROOFTOP_RELAY_BOT_TOKEN", hide_env_values = true)]
+    relay_bot_token: Option<String>,
+    /// Most accounts (names) the relay hub keeps.
+    #[arg(long, env = "ROOFTOP_RELAY_MAX_ACCOUNTS", default_value_t = 5000)]
+    relay_max_accounts: usize,
 }
 
 #[derive(Subcommand)]
@@ -91,48 +102,6 @@ fn default_persona(e: &rooftop::model::ChatExport) -> Option<String> {
         .map(|p| p.name.clone())
 }
 
-/// The IPv4 address other devices on the local network can open: Wi-Fi /
-/// Ethernet before VPN tunnels and virtual bridges, private ranges first.
-fn lan_ip() -> Option<std::net::Ipv4Addr> {
-    const VIRTUAL: &[&str] = &[
-        "utun",
-        "tun",
-        "tap",
-        "wg",
-        "ppp",
-        "ipsec",
-        "tailscale",
-        "zt",
-        "docker",
-        "br-",
-        "veth",
-        "vmnet",
-        "vboxnet",
-        "virbr",
-        "bridge",
-        "awdl",
-        "llw",
-        "anpi",
-        "gif",
-        "stf",
-        "lxc",
-        "cni",
-        "flannel",
-    ];
-    if_addrs::get_if_addrs()
-        .ok()?
-        .into_iter()
-        .filter(|i| !i.is_loopback() && !i.is_link_local() && i.oper_status != if_addrs::IfOperStatus::Down)
-        .filter_map(|i| {
-            let std::net::IpAddr::V4(ip) = i.ip() else { return None };
-            let name = i.name.to_lowercase();
-            let virtual_if = i.is_p2p() || VIRTUAL.iter().any(|p| name.starts_with(p)) || name.contains("virtual") || name.contains("vpn");
-            Some((u8::from(virtual_if) * 2 + u8::from(!ip.is_private()), ip))
-        })
-        .min_by_key(|(rank, _)| *rank)
-        .map(|(_, ip)| ip)
-}
-
 #[tokio::main]
 async fn main() -> Result<()> {
     let _ = dotenvy::dotenv();
@@ -167,14 +136,35 @@ async fn serve(args: ServeArgs) -> Result<()> {
     let paths = Paths::new(args.data.clone());
     let db = paths.load().with_context(|| format!("loading data dir {}", args.data.display()))?;
     let state = AppState::new(paths, db, env_llm());
-    if let Some(token) = args.telegram_token.as_deref().map(str::trim).filter(|t| !t.is_empty()) {
+    let env_token = args.telegram_token.as_deref().map(str::trim).filter(|t| !t.is_empty());
+    if let Some(token) = env_token {
         let cfg = rooftop::tgbot::BotConfig {
             token: token.to_string(),
             api_base: args.telegram_api.clone(),
             allowed_chats: args.telegram_chat.clone(),
+            source: rooftop::tgbot::BotSource::Env,
         };
-        rooftop::tgbot::start(&state, cfg)?;
+        rooftop::tgbot::set_env_bot(&state, cfg)?;
     }
+    let relay_hub = match args.relay_domain.as_deref().map(str::trim).filter(|d| !d.is_empty()) {
+        Some(domain) => {
+            let bot_token = args.relay_bot_token.as_deref().map(str::trim).filter(|t| !t.is_empty());
+            if bot_token.is_some() && bot_token == env_token {
+                anyhow::bail!("ROOFTOP_RELAY_BOT_TOKEN must be another bot than TELEGRAM_BOT_TOKEN (a bot token allows one poller)");
+            }
+            let hub = rooftop::relay_hub::Hub::new(rooftop::relay_hub::HubConfig {
+                domain: domain.to_string(),
+                data_dir: args.data.clone(),
+                trust_proxy: args.trust_proxy,
+                max_accounts: args.relay_max_accounts,
+                bot: bot_token.map(|t| rooftop::relay_tg::SharedBotConfig { token: t.to_string(), api_base: args.telegram_api.clone() }),
+            })?;
+            hub.start();
+            tracing::info!("relay hub for *.{domain}");
+            Some(hub)
+        }
+        None => None,
+    };
     for dir in args.import.iter().filter(|d| !d.as_os_str().is_empty()) {
         match server::import_into_store(&state, dir.clone()).await {
             Ok((rec, created)) => {
@@ -197,21 +187,35 @@ async fn serve(args: ServeArgs) -> Result<()> {
         }
     }
     let app = server::router(
-        state,
+        state.clone(),
         ServerOptions {
             password: args.password,
             max_upload_bytes: args.max_upload_mb.saturating_mul(1024 * 1024),
             trust_proxy: args.trust_proxy,
+            relay_hub,
         },
     );
     let listener = tokio::net::TcpListener::bind(&args.addr).await.with_context(|| format!("binding {}", args.addr))?;
     let bound = listener.local_addr().with_context(|| format!("binding {}", args.addr))?;
     if bound.ip().is_unspecified() {
         // All interfaces: show the address other devices on the network (Wi-Fi/LAN) can open.
-        let ip = lan_ip().map_or(std::net::IpAddr::from([127, 0, 0, 1]), std::net::IpAddr::V4);
+        let ip = rooftop::sharing::lan_ip().map_or(std::net::IpAddr::from([127, 0, 0, 1]), std::net::IpAddr::V4);
         tracing::info!("iRoof.top listening on http://{}", std::net::SocketAddr::new(ip, bound.port()));
     } else {
         tracing::info!("iRoof.top listening on http://{bound}");
+    }
+    // The owner UI is only on this computer: offer local network / internet sharing of the links.
+    if bound.ip().is_loopback() {
+        rooftop::sharing::init(&state, bound).await;
+    }
+    if env_token.is_none() {
+        let st = state.clone();
+        tokio::spawn(async move {
+            let _g = st.control.lock().await;
+            if let Err(e) = rooftop::tgbot::apply(&st).await {
+                tracing::warn!("Telegram: {e:#}");
+            }
+        });
     }
     axum::serve(listener, app.into_make_service_with_connect_info::<std::net::SocketAddr>())
         .with_graceful_shutdown(async {

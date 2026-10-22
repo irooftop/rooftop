@@ -57,18 +57,60 @@ pub struct ServerOptions {
     /// Take the client IP for PIN throttling from `X-Forwarded-For` / `X-Real-IP`
     /// (only behind a reverse proxy that sets them).
     pub trust_proxy: bool,
+    /// Relay hub ([`crate::relay_hub`]): serves `<name>.<domain>` for iRoof.top apps.
+    pub relay_hub: Option<Arc<crate::relay_hub::Hub>>,
 }
 
 impl Default for ServerOptions {
     fn default() -> Self {
-        Self { password: None, max_upload_bytes: 2048 * 1024 * 1024, trust_proxy: false }
+        Self { password: None, max_upload_bytes: 2048 * 1024 * 1024, trust_proxy: false, relay_hub: None }
     }
+}
+
+/// Largest request a visitor can send (voice messages are ≤ 5 MiB).
+const GUEST_MAX_BODY: usize = 16 * 1024 * 1024;
+
+/// What visitors need: the share pages and their API, and the static assets.
+fn public_routes() -> Router<Arc<AppState>> {
+    Router::new()
+        .route("/app.js", get(app_js))
+        .route("/app.css", get(app_css))
+        .route("/favicon.svg", get(favicon_svg))
+        .route("/favicon.ico", get(favicon_ico))
+        .merge(crate::share_api::guest_routes())
+}
+
+fn with_client_ip(router: Router<Arc<AppState>>, trust_proxy: bool) -> Router<Arc<AppState>> {
+    router.layer(middleware::from_fn(move |mut req: Request, next: Next| async move {
+        let ip = client_ip(&req, trust_proxy);
+        req.extensions_mut().insert(ClientIp(ip));
+        next.run(req).await
+    }))
+}
+
+/// Only the visitor side (share links), for other devices on the local network
+/// and for the internet relay: the owner UI and API are not part of it.
+pub fn guest_router(state: Arc<AppState>, trust_proxy: bool) -> Router {
+    with_client_ip(public_routes(), trust_proxy)
+        .route("/", get(guest_root))
+        .route("/healthz", get(|| async { "ok" }))
+        .fallback(|| async { (StatusCode::NOT_FOUND, "not found") })
+        .layer(DefaultBodyLimit::max(GUEST_MAX_BODY))
+        .layer(tower_http::compression::CompressionLayer::new())
+        .with_state(state)
+}
+
+async fn guest_root() -> Response {
+    let html = "<!doctype html><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><title>iRoof.top</title>\
+<body style=\"font:16px/1.5 system-ui,sans-serif;display:grid;place-items:center;min-height:90vh;text-align:center\"><main><h1>iRoof.top</h1>\
+<p>Open the share link you were sent: it looks like <code>/s/name</code>.</p></main></body>";
+    ([(header::CONTENT_TYPE, "text/html; charset=utf-8")], html).into_response()
 }
 
 pub fn router(state: Arc<AppState>, opts: ServerOptions) -> Router {
     let password = opts.password.filter(|p| !p.is_empty()).map(Arc::new);
     let trust_proxy = opts.trust_proxy;
-    Router::new()
+    let app = Router::new()
         .route("/", get(index))
         .route("/api/state", get(api_state))
         .route("/api/exports", post(upload_export))
@@ -91,26 +133,25 @@ pub fn router(state: Arc<AppState>, opts: ServerOptions) -> Router {
         .route("/api/mcp", get(mcp_status))
         .route("/api/mcp/reconnect", post(mcp_reconnect))
         .route("/api/telegram", get(crate::tgbot::status))
+        .route("/api/telegram/link", post(crate::tgbot::add_link))
+        .merge(crate::sharing::owner_routes())
         .route("/media/{export_id}/{*path}", get(media))
         .layer(middleware::from_fn(move |req: Request, next: Next| {
             let password = password.clone();
             async move { auth(password, req, next).await }
         }))
         // Public: static assets and share links (they have their own PIN check).
-        .route("/app.js", get(app_js))
-        .route("/app.css", get(app_css))
-        .route("/favicon.svg", get(favicon_svg))
-        .route("/favicon.ico", get(favicon_ico))
-        .merge(crate::share_api::guest_routes())
-        .layer(middleware::from_fn(move |mut req: Request, next: Next| async move {
-            let ip = client_ip(&req, trust_proxy);
-            req.extensions_mut().insert(ClientIp(ip));
-            next.run(req).await
-        }))
+        .merge(public_routes());
+    let app = with_client_ip(app, trust_proxy)
         .route("/healthz", get(|| async { "ok" }))
         .layer(DefaultBodyLimit::max(opts.max_upload_bytes))
         .layer(tower_http::compression::CompressionLayer::new())
-        .with_state(state)
+        .with_state(state);
+    match opts.relay_hub {
+        // Outermost: `<name>.<domain>` never reaches the owner's routes.
+        Some(hub) => app.layer(middleware::from_fn_with_state(hub, crate::relay_hub::middleware)),
+        None => app,
+    }
 }
 
 /// Optional HTTP Basic auth (any user name, `ROOFTOP_PASSWORD` as password).
@@ -146,7 +187,7 @@ async fn auth(password: Option<Arc<String>>, req: Request, next: Next) -> Respon
 #[derive(Clone, Debug)]
 pub struct ClientIp(pub String);
 
-fn client_ip(req: &Request, trust_proxy: bool) -> String {
+pub(crate) fn client_ip(req: &Request, trust_proxy: bool) -> String {
     if trust_proxy {
         let h = req.headers();
         let fwd = h
@@ -1045,7 +1086,21 @@ async fn get_settings(State(st): S) -> ApiResult {
         "media_model": s.media_model,
         "env_media_model": std::env::var("OPENAI_MEDIA_MODEL").unwrap_or_default(),
         "mcpServers": s.mcp_servers,
+        "telegram": {
+            "mode": s.telegram.mode,
+            "has_token": !s.telegram.token.trim().is_empty(),
+            // TELEGRAM_BOT_TOKEN is set: Settings can't change the bot.
+            "env": st.telegram_env.get().is_some(),
+            "relay_host": crate::relay_client::relay_host(&crate::relay_client::relay_base(&s.sharing.relay_url)),
+        },
     })))
+}
+
+#[derive(Deserialize)]
+struct TelegramPatch {
+    mode: Option<crate::store::TelegramMode>,
+    /// `Some("")` clears the stored token, `None` keeps it.
+    token: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -1060,6 +1115,7 @@ struct SettingsPatch {
     media_model: Option<String>,
     #[serde(rename = "mcpServers")]
     mcp_servers: Option<Value>,
+    telegram: Option<TelegramPatch>,
 }
 
 async fn put_settings(State(st): S, Json(p): Json<SettingsPatch>) -> ApiResult {
@@ -1077,8 +1133,28 @@ async fn put_settings(State(st): S, Json(p): Json<SettingsPatch>) -> ApiResult {
             Some(cfg)
         }
     };
+    if let Some(t) = p.telegram.as_ref().and_then(|t| t.token.as_deref()).map(str::trim).filter(|t| !t.is_empty()) {
+        let well_formed = t.split_once(':').is_some_and(|(id, rest)| {
+            !id.is_empty()
+                && id.bytes().all(|b| b.is_ascii_digit())
+                && rest.len() >= 30
+                && rest.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-')
+        });
+        if !well_formed {
+            return Err(bad("That doesn't look like a bot token. @BotFather shows it as 123456789:AA…"));
+        }
+    }
     let mut db = st.db.write().await;
     let s = &mut db.settings;
+    let telegram_changed = p.telegram.is_some();
+    if let Some(t) = p.telegram {
+        if let Some(m) = t.mode {
+            s.telegram.mode = m;
+        }
+        if let Some(token) = t.token {
+            s.telegram.token = token.trim().to_string();
+        }
+    }
     if let Some(v) = p.base_url {
         s.llm.base_url = v.trim().to_string();
     }
@@ -1108,6 +1184,11 @@ async fn put_settings(State(st): S, Json(p): Json<SettingsPatch>) -> ApiResult {
     st.paths.save_settings(s)?;
     if changed_mcp {
         *st.mcp.lock().await = McpManager::new(s.mcp_servers.clone()).with_workspace(st.paths.root.join("mcp"));
+    }
+    drop(db);
+    if telegram_changed {
+        let _g = st.control.lock().await;
+        crate::tgbot::apply(&st).await.map_err(|e| ApiError(StatusCode::BAD_GATEWAY, format!("Telegram: {e:#}")))?;
     }
     Ok(Json(json!({"ok": true})))
 }

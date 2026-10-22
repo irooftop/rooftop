@@ -26,7 +26,7 @@ services:
     logging: *logging
 
   iroof:
-    image: ghcr.io/irooftop/rooftop:0.1
+    image: ghcr.io/irooftop/rooftop:0.2
     container_name: iroof
     restart: unless-stopped
     env_file: ./iroof.env

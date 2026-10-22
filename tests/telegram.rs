@@ -173,7 +173,11 @@ async fn visitor_messages_relay_to_telegram_with_reply_and_ai_buttons() {
     let (st, _) = call(&app, "POST", &format!("/api/chats/{template}/shares"), Some(json!({"telegram_chat_id": GROUP}))).await;
     assert_eq!(st, StatusCode::BAD_REQUEST);
 
-    tgbot::start(&state, BotConfig { token: "TEST:TOKEN".into(), api_base: tg_url, allowed_chats: vec![GROUP] }).unwrap();
+    tgbot::start(
+        &state,
+        BotConfig { token: "TEST:TOKEN".into(), api_base: tg_url, allowed_chats: vec![GROUP], source: tgbot::BotSource::Env },
+    )
+    .unwrap();
     let mut groups = json!(null);
     for _ in 0..200 {
         groups = call(&app, "GET", "/api/telegram", None).await.1;

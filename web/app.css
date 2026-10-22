@@ -503,6 +503,44 @@ body.lb-open { overflow: hidden; }
 .pin-once { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 13.5px; padding: 8px 10px; border-radius: 10px; background: color-mix(in srgb, var(--accent) 10%, transparent); }
 .pin-once > .i { color: var(--accent); width: 17px; height: 17px; }
 .pin-once > span { flex: 1; min-width: 160px; }
+/* Where links work: Wi-Fi / internet switches above the list. */
+.reach { display: grid; gap: 4px; padding: 6px 12px; border: 1px solid var(--border); border-radius: 14px; background: var(--bg-2); }
+.reach-row { padding: 6px 0 !important; }
+.reach-row + .reach-row { border-top: 1px solid var(--border); }
+.reach-ic { display: grid; place-items: center; width: 32px; height: 32px; border-radius: 10px; background: color-mix(in srgb, var(--accent) 12%, var(--panel)); color: var(--accent); flex: none; }
+.reach-ic .i { width: 18px; height: 18px; }
+.reach .sw-text .small { overflow-wrap: anywhere; }
+.reach .err, .tg-line .err, .tg-line.err { color: var(--danger); }
+.reach-name { display: flex; align-items: center; gap: 8px; padding: 0 0 6px 44px; }
+.reach-name > label { flex: none; }
+.reach-name .slug-row { flex: 1; min-width: 0; height: 34px; background: var(--panel); }
+.reach-name .slug-prefix { font-size: 13.5px; }
+.reach-name .slug-prefix.suffix { padding: 0 11px 0 0; }
+.dlg .reach-name .slug-row > input { padding: 0 0 0 11px; font-size: 14px; }
+.btn.sm.on { background: color-mix(in srgb, var(--accent) 14%, var(--panel)); color: var(--accent); }
+/* QR code of a link, inline in its card. */
+.qr-panel { display: flex; gap: 14px; align-items: center; padding: 10px; border-radius: 12px; background: var(--bg-2); min-width: 0; }
+.qr-panel img { flex: none; width: 168px; height: 168px; border-radius: 10px; background: #fff; padding: 4px; image-rendering: pixelated; }
+.qr-side { flex: 1; min-width: 0; display: grid; gap: 8px; align-content: center; }
+.qr-side a { overflow-wrap: anywhere; color: var(--link); }
+.qr-url { overflow-wrap: anywhere; font-weight: 600; }
+.qr-tabs span { height: 28px; font-size: 12.5px; }
+/* Settings → Telegram. */
+.tg-token { display: flex; gap: 8px; margin-top: 8px; }
+.tg-token input { flex: 1; min-width: 0; }
+.tg-status { display: grid; gap: 6px; margin-top: 8px; }
+.tg-status:empty { display: none; }
+.tg-line { display: flex; align-items: baseline; gap: 8px; }
+.tg-line .dot, .tg-status .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); flex: none; transform: translateY(-1px); }
+.tg-line .dot.ok { background: #2fa84f; }
+.tg-line .dot.err { background: var(--danger); }
+.tg-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+.tg-status .qr-panel img { width: 148px; height: 148px; }
+@media (max-width: 720px) {
+  .qr-panel { flex-direction: column; align-items: stretch; }
+  .qr-panel img { align-self: center; }
+  .reach-name { padding-left: 0; flex-wrap: wrap; }
+}
 .sessions summary { cursor: pointer; font-size: 13.5px; color: var(--muted); padding: 2px 0; }
 .session-row { display: flex; align-items: center; gap: 10px; padding: 6px 0; border-top: 1px solid var(--border); min-width: 0; }
 .session-row:first-of-type { border-top: 0; }

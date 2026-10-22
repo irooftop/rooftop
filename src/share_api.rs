@@ -205,7 +205,7 @@ async fn apply_input(st: &AppState, share: &mut Share, input: ShareInput, db: &D
         if let Some(id) = tg
             && share.telegram_chat_id != Some(id)
         {
-            let bot = st.telegram.get().ok_or_else(|| bad("no Telegram bot is configured (set TELEGRAM_BOT_TOKEN)"))?;
+            let bot = st.telegram.read().expect("tg bot").clone().ok_or_else(|| bad("no Telegram bot is set up (Settings → Telegram)"))?;
             if !bot.has_group(id) {
                 return Err(bad("the bot is not a member of this Telegram group, add it to the group first"));
             }

@@ -73,6 +73,9 @@
 <symbol id="i-brush" viewBox="0 0 24 24"><path d="M18.5 3.5a2 2 0 0 1 2 2c0 3-6 9-8.5 10.5l-2-2C11.5 11.5 15.5 3.5 18.5 3.5zM9.5 13.5c-2 0-3.5 1.5-3.5 3.5 0 1.5-1 2.5-2.5 2.5 1 1 2.5 1.5 4 1.5 2.5 0 4-1.5 4-3.5"/></symbol>
 <symbol id="i-x-circle" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="m9 9 6 6M15 9l-6 6"/></symbol>
 <symbol id="i-check" viewBox="0 0 24 24"><path d="m5 12.5 4.5 4.5L19 7.5"/></symbol>
+<symbol id="i-wifi" viewBox="0 0 24 24"><path d="M2.5 9a14 14 0 0 1 19 0"/><path d="M5.5 12.5a9.5 9.5 0 0 1 13 0"/><path d="M8.7 15.8a5 5 0 0 1 6.6 0"/><path d="M12 19.2h.01"/></symbol>
+<symbol id="i-globe" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3 12h18"/><path d="M12 3c2.5 2.6 3.8 5.6 3.8 9s-1.3 6.4-3.8 9c-2.5-2.6-3.8-5.6-3.8-9S9.5 5.6 12 3z"/></symbol>
+<symbol id="i-qr" viewBox="0 0 24 24"><rect x="3.5" y="3.5" width="6.5" height="6.5" rx="1.2"/><rect x="14" y="3.5" width="6.5" height="6.5" rx="1.2"/><rect x="3.5" y="14" width="6.5" height="6.5" rx="1.2"/><path d="M14 14h3v3"/><path d="M20.5 14v.01"/><path d="M14 20.5h3"/><path d="M20.5 17.5v3h-.5"/></symbol>
 </defs>
 </svg>
 <section class="home hidden" id="home" aria-labelledby="homeTitle" data-tauri-drag-region="deep">
@@ -365,6 +368,17 @@ c-46 -3 -74 48 -45 83 4 5 3 5 -5 1z"/></g>
         <div class="help" id="hSteps" hidden>How many LLM rounds one answer may take (e.g. search history, then call an MCP tool, then reply). Higher allows more tool use but costs more.</div>
       </div>
     </div>
+    <div class="field tg-settings">
+      <div class="field-head"><span class="legend" id="sTgL">Telegram</span><button type="button" class="info-btn" aria-label="About: Telegram" aria-expanded="false" aria-controls="hTgS"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-info"></use></svg></button></div>
+      <div class="help" id="hTgS" hidden>Share links can post visitor messages to a Telegram group. There you press <b>Reply</b> and answer yourself, or let the AI answer when a countdown ends. <b>Shared bot</b> needs no setup: the <span class="tg-relay-host">iroof.top</span> bot relays the messages for you, so they pass through <span class="tg-relay-host">iroof.top</span>. <b>Own bot</b>: create one with <a href="https://t.me/BotFather" target="_blank" rel="noopener noreferrer">@BotFather</a> and paste its token, and messages go straight between this app and Telegram. A bot token works in one app at a time.</div>
+      <div class="seg" role="radiogroup" aria-labelledby="sTgL" id="sTgModes">
+        <label><input type="radio" name="sTgMode" value="off"><span>Off</span></label>
+        <label><input type="radio" name="sTgMode" value="shared"><span>Shared bot</span></label>
+        <label><input type="radio" name="sTgMode" value="own"><span>Own bot</span></label>
+      </div>
+      <div class="tg-token hidden" id="sTgTokenRow"><input id="sTgToken" type="password" autocomplete="off" spellcheck="false" placeholder="Bot token from @BotFather, 123456789:AA…" aria-label="Bot token"><button type="button" class="btn" id="sTgConnect">Connect</button></div>
+      <div class="tg-status" id="sTgStatus" role="status" aria-live="polite"></div>
+    </div>
     <div class="field">
       <div class="field-head"><label for="sMcp">MCP servers</label><button type="button" class="info-btn" aria-label="About: MCP servers" aria-expanded="false" aria-controls="hMcp"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-info"></use></svg></button></div>
       <div class="help" id="hMcp" hidden>Common <code>mcpServers</code> JSON: HTTP <code>url</code> (+ <code>headers</code>) or stdio <code>command</code>/<code>args</code>/<code>env</code>. Protocol revisions 2024-11-05 → 2026-07-28. Tools such as Giphy let the persona find and send new GIFs.<br>Example: <code>{"giphy": {"command": "npx", "args": ["-y", "mcp-server-giphy"], "env": {"GIPHY_API_KEY": "…"}}}</code></div>
@@ -392,7 +406,16 @@ c-46 -3 -74 48 -45 83 4 5 3 5 -5 1z"/></g>
       <button type="button" class="icon-btn" data-close aria-label="Close"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-close"></use></svg></button>
     </div>
     <div class="help" id="hShare" hidden>Send a link so other people can talk to this persona, for example a friend who wants to see how well the AI writes in your style, or talks to a copy of themselves. Visitors see only the chat: no settings, notes, media descriptions, LLM prompt or other chats. By default every visitor gets an own conversation that starts after the end of the export, and you can read them all here. A PIN is checked on the server, and wrong guesses lock the link for that visitor first, then for everyone, for longer and longer. Each persona answer costs tokens on your API key, so keep the limits.</div>
-    <div class="note warn hidden" id="shLocal"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-alert"></use></svg><span>This page is open on <b id="shHost"></b>, so these links only work on this device. Open iRoof.top via an address your friends can reach (a server, or a tunnel) to share it.</span></div>
+    <div class="reach hidden" id="shReach">
+      <label class="switch-row reach-row"><span class="reach-ic"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-wifi"></use></svg></span><span class="sw-text"><b>Wi‑Fi and local network</b><span class="muted small" id="rLanText"></span></span><input type="checkbox" class="switch" id="rLan"></label>
+      <label class="switch-row reach-row"><span class="reach-ic"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-globe"></use></svg></span><span class="sw-text"><b>Internet</b><span class="muted small" id="rNetText"></span></span><input type="checkbox" class="switch" id="rNet"></label>
+      <form class="reach-name hidden" id="rNameForm">
+        <label for="rName" class="muted small">Address</label>
+        <div class="slug-row"><input id="rName" maxlength="32" autocomplete="off" autocapitalize="off" spellcheck="false" pattern="[a-z0-9](?:[a-z0-9\-]{1,30}[a-z0-9])" title="3–32 lowercase letters, digits or hyphens"><span class="slug-prefix suffix" id="rNameSuffix">.iroof.top</span></div>
+        <button class="btn sm" id="rNameSave" disabled>Save</button>
+      </form>
+    </div>
+    <div class="note warn hidden" id="shLocal"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-alert"></use></svg><span id="shLocalText"></span></div>
     <div class="share-list" id="shList"></div>
     <div class="dlg-actions">
       <button type="button" class="btn primary" id="shNew"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-plus"></use></svg><span>New link</span></button>

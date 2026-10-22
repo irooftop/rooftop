@@ -41,6 +41,46 @@ pub struct Settings {
     pub media_model: String,
     #[serde(rename = "mcpServers")]
     pub mcp_servers: McpConfig,
+    /// Telegram relay for share links (the `TELEGRAM_BOT_TOKEN` env var wins).
+    pub telegram: TelegramSettings,
+    /// Where share links can be opened besides this device (desktop / local server).
+    pub sharing: SharingSettings,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum TelegramMode {
+    #[default]
+    Off,
+    /// The owner's own bot (token from @BotFather).
+    Own,
+    /// The relay's shared bot (e.g. the iroof.top bot), reached through the relay.
+    Shared,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(default)]
+pub struct TelegramSettings {
+    pub mode: TelegramMode,
+    /// Token of the own bot. Never sent to the browser.
+    pub token: String,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(default)]
+pub struct SharingSettings {
+    /// Serve share links to devices on the local network (Wi-Fi / LAN).
+    pub lan: bool,
+    /// Port of the local network listener (0: pick one and remember it).
+    pub lan_port: u16,
+    /// Serve share links at `https://<name>.<relay domain>` through the relay.
+    pub internet: bool,
+    /// Subdomain claimed at the relay.
+    pub name: String,
+    /// Account secret at the relay. Never sent to the browser.
+    pub secret: String,
+    /// Relay base URL, empty: `ROOFTOP_RELAY_URL`, then `https://iroof.top`.
+    pub relay_url: String,
 }
 
 impl Default for Settings {
@@ -51,6 +91,8 @@ impl Default for Settings {
             max_tool_steps: 6,
             media_model: String::new(),
             mcp_servers: McpConfig::new(),
+            telegram: TelegramSettings::default(),
+            sharing: SharingSettings::default(),
         }
     }
 }

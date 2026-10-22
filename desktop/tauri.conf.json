@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/3.0.0-alpha.5",
   "productName": "iRoof.top",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "identifier": "top.iroof.desktop",
   "build": {
     "frontendDist": "./dist"

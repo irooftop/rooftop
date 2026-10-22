@@ -30,7 +30,7 @@ fn start_server(data_dir: std::path::PathBuf) -> Result<SocketAddr> {
     let db = paths.load().with_context(|| format!("loading data dir {}", data_dir.display()))?;
     rooftop::llm::ensure_crypto_provider();
     let state = AppState::new(paths, db, env_llm());
-    let app = server::router(state, ServerOptions { password: None, max_upload_bytes: MAX_UPLOAD_BYTES, ..Default::default() });
+    let app = server::router(state.clone(), ServerOptions { password: None, max_upload_bytes: MAX_UPLOAD_BYTES, ..Default::default() });
     tauri::async_runtime::block_on(async move {
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.context("binding 127.0.0.1:0")?;
         let addr = listener.local_addr()?;
@@ -39,8 +39,29 @@ fn start_server(data_dir: std::path::PathBuf) -> Result<SocketAddr> {
                 eprintln!("server error: {e}");
             }
         });
+        // Share links on the Wi-Fi and at <name>.iroof.top (if turned on), and the Telegram bot.
+        rooftop::sharing::init(&state, addr).await;
+        tauri::async_runtime::spawn(async move {
+            let _g = state.control.lock().await;
+            if let Err(e) = rooftop::tgbot::apply(&state).await {
+                eprintln!("Telegram: {e:#}");
+            }
+        });
         Ok(addr)
     })
+}
+
+/// Opens a link in the default browser (or Telegram, for `tg:` links).
+fn open_external(url: &str) {
+    #[cfg(target_os = "macos")]
+    let r = std::process::Command::new("open").arg(url).spawn();
+    #[cfg(target_os = "windows")]
+    let r = std::process::Command::new("rundll32").args(["url.dll,FileProtocolHandler", url]).spawn();
+    #[cfg(all(unix, not(target_os = "macos")))]
+    let r = std::process::Command::new("xdg-open").arg(url).spawn();
+    if let Err(e) = r {
+        eprintln!("opening {url}: {e}");
+    }
 }
 
 fn main() {
@@ -61,7 +82,18 @@ fn main() {
                     .permission("core:window:allow-internal-toggle-maximize")
                     .permission("core:window:allow-set-theme"),
             )?;
+            let origin = format!("http://{addr}/");
             let builder = WebviewWindowBuilder::new(app, "main", WebviewUrl::External(url))
+                // Links to other sites (t.me, share links on the network) open in the browser.
+                .on_new_window(move |url, _| {
+                    let external = matches!(url.scheme(), "http" | "https" | "tg") && !url.as_str().starts_with(&origin);
+                    if external {
+                        open_external(url.as_str());
+                        tauri::webview::NewWindowResponse::Deny
+                    } else {
+                        tauri::webview::NewWindowResponse::Allow
+                    }
+                })
                 .title("iRoof.top")
                 .inner_size(1280.0, 840.0)
                 .min_inner_size(640.0, 480.0);

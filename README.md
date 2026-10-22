@@ -91,6 +91,32 @@ limit, and `ROOFTOP_TRUST_PROXY` is on because Caddy sets the visitor's IP. Upda
 `docker compose pull && docker compose up -d`. Back up the `iroof-data` volume, which holds the exports, chats and
 settings.
 
+### Run a relay hub
+
+A server can also be the relay that desktop apps use for **Internet** sharing (iroof.top is one). Set
+`ROOFTOP_RELAY_DOMAIN=your.domain`, and apps that set `ROOFTOP_RELAY_URL=https://your.domain` publish their links at
+`https://<name>.your.domain`. The hub needs:
+
+* a wildcard DNS record `*.your.domain` pointing at the server;
+* a wildcard certificate, which needs Caddy's DNS-01 challenge with a [DNS provider module](https://caddyserver.com/docs/modules/)
+  (build Caddy with `xcaddy build --with github.com/caddy-dns/<provider>`);
+* the reverse proxy passing `Host` through to iRoof.top, which Caddy does by default:
+
+```caddyfile
+*.your.domain {
+	tls {
+		dns <provider> …
+	}
+	reverse_proxy iroof:8080
+}
+```
+
+The hub's API (`/relay/v1/…`) answers on the main domain, and every `<name>.your.domain` request goes to the app that
+owns the name, never to the hub's own owner UI. Names are first come, first served. They are 3–32 lowercase letters,
+digits and hyphens, a few (`www`, `api`, `admin`…) are reserved, and a name is released after 180 days without a
+connection. New names are rate-limited per IP. With `ROOFTOP_RELAY_BOT_TOKEN`, the hub also runs the shared Telegram
+bot. The hub keeps its state in the data directory (`relay.json`, `relay-telegram.json`).
+
 ### Configuration
 
 | Variable | Default | Meaning |
@@ -111,15 +137,33 @@ settings.
 | `TELEGRAM_BOT_TOKEN` | – | Bot token from [@BotFather](https://t.me/BotFather): relays share links to a Telegram group (see below) |
 | `TELEGRAM_CHAT_ID` | any group the bot joins | Allowed group id(s), comma-separated |
 | `TELEGRAM_API_URL` | `https://api.telegram.org` | Bot API base URL (e.g. a self-hosted Bot API server) |
+| `ROOFTOP_RELAY_URL` | `https://iroof.top` | Relay used for **Internet** sharing and the shared Telegram bot |
+| `ROOFTOP_RELAY_DOMAIN` | – | Run a relay hub for this domain: apps publish their links at `https://<name>.<domain>` ([Run a relay hub](#run-a-relay-hub)) |
+| `ROOFTOP_RELAY_BOT_TOKEN` | – | The hub's shared Telegram bot, for apps without a bot of their own. Must be another bot than `TELEGRAM_BOT_TOKEN` |
+| `ROOFTOP_RELAY_MAX_ACCOUNTS` | `5000` | Most names a hub keeps (names unused for 180 days are released) |
 
 Values set in the UI (Settings) override the environment. That covers the LLM endpoint, model, key and
-temperature, the history budget, the number of tool steps per answer, and MCP servers.
+temperature, the history budget, the number of tool steps per answer, MCP servers and the Telegram bot
+(`TELEGRAM_BOT_TOKEN` wins over Settings when it is set).
 
 ### Answer visitors from Telegram
 
-With `TELEGRAM_BOT_TOKEN` set, a share link can send its visitors' messages to a Telegram group instead of letting
-the AI answer right away. Create a group, add the bot to it, then pick the group under **Share → Telegram group**.
-Each visitor message appears in the group with two buttons:
+A share link can send its visitors' messages to a Telegram group instead of letting the AI answer right away.
+Choose a bot in **Settings → Telegram**:
+
+* **Shared bot**: no setup. The bot of the relay (iroof.top) posts to your group for you. Press **Add to a group**:
+  Telegram opens (or scan the QR code with your phone) and asks which group to add the bot to. The link carries a
+  one-time code, valid for an hour, that connects that group to your app only. Other apps on the relay can't post to
+  your group or press its buttons. Messages pass through the relay in plain text, as they would through any
+  Telegram bot.
+* **Own bot**: create a bot with [@BotFather](https://t.me/BotFather), paste its token and press **Connect**. Messages
+  go straight between your app and Telegram. A bot token works in one app at a time, so don't use the same bot on
+  two computers.
+* On a server you can also set `TELEGRAM_BOT_TOKEN` (and `TELEGRAM_CHAT_ID` to allow only some groups), which wins
+  over Settings.
+
+Both kinds of bot fetch updates by long polling, so they work from a laptop without a public address. Then pick the
+group under **Share → Telegram group**. Each visitor message appears in the group with two buttons:
 
 * **✍️ Reply**: stops the countdown and asks you for the answer. Your text reaches the visitor as a message from the
   persona. There are three ways to answer:
@@ -254,9 +298,26 @@ The link-wide lockout means an attacker can keep a link locked, but cannot guess
 reasonable time.
 
 Behind a reverse proxy, set `ROOFTOP_TRUST_PROXY=true` so the counters see real client IPs. `ROOFTOP_PASSWORD`
-protects the owner UI and API. Share links, `/app.js` and `/app.css` stay reachable without it. Links only work
-for others when your server is reachable from their side. The desktop app runs on `127.0.0.1`, so use a server or
-a tunnel for that.
+protects the owner UI and API. Share links, `/app.js` and `/app.css` stay reachable without it.
+
+### Open links on other devices
+
+On a server, links use the server's address. The desktop app (and `rooftop` on `127.0.0.1`) runs only on your
+computer, so the Share dialog offers two switches above the links. The **QR** button of a link shows a code to scan
+with a phone camera, for each address that works.
+
+* **Wi‑Fi and local network**: phones and computers on the same network open the links at
+  `http://<your computer's IP>:8737/s/<name>`. A second listener on all network interfaces serves only the visitor
+  pages, their API and the page assets. The owner UI, settings and API stay on `127.0.0.1`. The port stays the same
+  across restarts (8737, or the next free one), so printed QR codes keep working. On macOS, allow incoming
+  connections if the firewall asks.
+* **Internet**: links work anywhere at `https://<name>.iroof.top/s/<name>` while the app runs. You pick the name
+  (a random one is suggested), and you can change it later. The app keeps one outgoing WebSocket to the relay, and the
+  relay passes visitor requests through it, so nothing on your computer listens on the internet. The relay forwards
+  only `/s/…`, `/api/s/…` and the page assets. It drops cookies and credentials both ways, and visitors see an
+  "offline" page while the app isn't running. Your exports, model key and the AI stay on your computer, but visitors'
+  messages pass through the relay. The app proves it owns the name with a random secret kept in `settings.json`, and
+  the relay stores only its SHA-256.
 
 ## MCP (e.g. Giphy)
 
@@ -348,12 +409,19 @@ asks for WAV.
 | GET/POST | `/api/chats/{id}/shares` | list / create share links of a chat |
 | PATCH/DELETE | `/api/shares/{id}` | edit (`pin: ""` removes it, `revoke_sessions`) / delete a link |
 | DELETE | `/api/shares/{id}/sessions/{session}` | end one visitor conversation |
-| GET/PUT | `/api/settings` | LLM + MCP settings |
+| GET/PUT | `/api/settings` | LLM, MCP and Telegram settings (`telegram: {mode: off\|shared\|own, token?}`) |
 | GET | `/api/mcp`, POST `/api/mcp/reconnect` | MCP status |
+| GET | `/api/telegram`, POST `/api/telegram/link` | bot status and groups / a `t.me` link that adds the bot to a group |
+| GET/PUT | `/api/sharing` | local network and internet sharing `{lan?, internet?, name?}` (only when the owner UI runs on localhost) |
+| GET | `/api/qr?text=…` | a QR code (SVG) |
 
 Public (no `ROOFTOP_PASSWORD`): `GET /s/{name}[/{token}]` (page), `GET /api/s/{name}` (start page info),
 `POST /api/s/{name}/sessions` `{pin?, name?}` → `{token}`, and under `/api/s/{name}/c/{token}`: `GET` (timeline),
 `POST messages | react | voice | respond | regenerate`, `GET media/{path}`.
+
+A relay hub adds `POST /relay/v1/register` `{name}` (claim or rename, `Authorization: Bearer <secret>`),
+`GET /relay/v1/connect` (the app's WebSocket), `GET /relay/v1/info` and the shared bot's Bot API proxy
+`/relay/v1/tg/bot<secret>/<method>`.
 
 ## Desktop app
 
@@ -363,7 +431,9 @@ window. Data is stored in the OS app-data directory, for example `~/Library/Appl
 on macOS. The app doesn't read your shell or `.env`, so on first launch it shows *Connect a model*: open Settings, enter
 the endpoint, key and model, and press **Test**. Test sends a tiny request and shows a plain answer, for example "openrouter.ai
 rejected the API key (401)". If `OPENAI_BASE_URL`, `OPENAI_API_KEY`, `OPENAI_MODEL` or
-`OPENAI_TEMPERATURE` are set, they are used as the initial defaults.
+`OPENAI_TEMPERATURE` are set, they are used as the initial defaults. Share links can be opened on the same Wi‑Fi
+or over the internet ([Open links on other devices](#open-links-on-other-devices)), and links to other sites (such as
+`t.me`) open in your browser.
 
 On macOS the window has no system title bar. The app's own headers continue under the traffic-light buttons, in the
 app's colors, and the headers and empty backgrounds drag the window, and double-click zooms. Only the local UI can do this:
