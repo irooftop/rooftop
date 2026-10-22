@@ -1029,8 +1029,16 @@ async fn get_prompt(State(st): S, Path(id): Path<String>) -> ApiResult {
 
 async fn get_settings(State(st): S) -> ApiResult {
     let s = st.db.read().await.settings.clone();
+    // Model endpoints that Offline mode would refuse, so the UI can say so up front.
+    let mut remote: Vec<String> = Vec::new();
+    for cfg in [st.llm_config().await, st.media_llm_config().await] {
+        let origin = crate::llm::origin_of(&cfg.base_url);
+        if !crate::llm::is_local(&cfg.base_url) && !remote.contains(&origin) {
+            remote.push(origin);
+        }
+    }
     Ok(Json(json!({
-        "offline": {"on": st.is_offline(), "setting": s.offline, "forced": st.offline_forced()},
+        "offline": {"on": st.is_offline(), "setting": s.offline, "forced": st.offline_forced(), "remote": remote},
         "base_url": s.llm.base_url,
         "model": s.llm.model,
         "temperature": s.llm.temperature,

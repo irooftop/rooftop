@@ -1054,7 +1054,10 @@ $("#sOffline").addEventListener("change", async () => {
     if (!s.offline.on) openTgSettings(s.telegram || {});
     loadState().catch(() => { });
     api("/api/mcp").then(r => renderMcpStatus(r.servers)).catch(() => { });
-    toast(s.offline.on ? "Offline mode is on" : "Offline mode is off");
+    const remote = s.offline.on ? s.offline.remote || [] : [];
+    toast(remote.length
+      ? `Offline mode is on, but ${remote.join(" and ")} ${remote.length > 1 ? "are not local endpoints" : "is not a local endpoint"}: pick a model on this computer (e.g. Ollama) below, or replies will be refused.`
+      : s.offline.on ? "Offline mode is on" : "Offline mode is off", { error: remote.length > 0, ms: remote.length ? 10000 : 5000 });
   } catch (e) { box.checked = !want; toast(e.message, { error: true }); }
   finally { box.disabled = OFFLINE_FORCED; }
 });

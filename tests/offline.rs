@@ -92,6 +92,7 @@ async fn offline_refuses_remote_models_and_keeps_relay_and_telegram_off() {
     // Settings report the state; switching it off lets remote endpoints through to the usual checks again.
     let (_, s) = call(&router, "GET", "/api/settings", None).await;
     assert_eq!(s["offline"]["on"], true);
+    assert_eq!(s["offline"]["remote"], json!(["https://openrouter.ai"]), "the UI warns about the remote model up front");
     let (st, _) = call(&router, "PUT", "/api/settings", Some(json!({"offline": false}))).await;
     assert_eq!(st, StatusCode::OK);
     assert!(!state.is_offline());
