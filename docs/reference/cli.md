@@ -19,11 +19,13 @@ rooftop convert [OPTIONS] <DIR>  print the {model, messages, tools} for an expor
 | `--telegram-token` | `TELEGRAM_BOT_TOKEN` | – |
 | `--telegram-chat` | `TELEGRAM_CHAT_ID` | every group the bot joins |
 | `--telegram-api` | `TELEGRAM_API_URL` | `https://api.telegram.org` |
+| `--offline` | `ROOFTOP_OFFLINE` | off |
 | `--relay-domain` | `ROOFTOP_RELAY_DOMAIN` | – |
 | `--relay-bot-token` | `ROOFTOP_RELAY_BOT_TOKEN` | – |
 | `--relay-max-accounts` | `ROOFTOP_RELAY_MAX_ACCOUNTS` | `5000` |
 
-What each one does: [Configuration](./configuration).
+`--offline` refuses non-local model and MCP endpoints and turns off internet sharing and the Telegram bot
+([Offline & privacy](../guide/offline)). It can't be combined with `--relay-domain`. What each one does: [Configuration](./configuration).
 
 ## `parse` and `convert`
 

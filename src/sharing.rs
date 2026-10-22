@@ -28,6 +28,14 @@ const LAN_PORTS: std::ops::RangeInclusive<u16> = 8737..=8746;
 
 type S = State<Arc<AppState>>;
 
+const OFFLINE_RELAY: &str = "Offline mode: sharing over the internet is off. Wi-Fi share links still work.";
+
+/// Applies the saved settings (after Offline mode was switched).
+pub async fn reapply(st: &Arc<AppState>) {
+    let _g = st.control.lock().await;
+    apply(st).await;
+}
+
 struct Lan {
     port: u16,
     task: tokio::task::JoinHandle<()>,
@@ -134,9 +142,16 @@ async fn apply(st: &Arc<AppState>) {
     {
         lan.task.abort();
     }
-    // Internet.
+    // Internet. Offline mode keeps the relay off without touching the saved choice.
     let relay_running = s.relay.lock().expect("relay").is_some();
-    if cfg.internet && !relay_running {
+    if st.is_offline() {
+        if let Some(c) = s.relay.lock().expect("relay").take() {
+            c.cancel();
+        }
+        let mut status = s.relay_status.lock().expect("relay status");
+        status.state = "off";
+        status.error = None;
+    } else if cfg.internet && !relay_running {
         match ensure_account(st, false).await {
             Ok((base, secret, name)) => {
                 let cancel = CancellationToken::new();
@@ -196,6 +211,9 @@ async fn start_lan(st: &Arc<AppState>, saved: u16) -> anyhow::Result<Lan> {
 /// The relay account (base URL, secret, name), created and registered on first use.
 /// `force` registers again (the hub may have lost the account).
 pub async fn ensure_account(st: &AppState, force: bool) -> Result<(String, String, String), relay_client::RegisterError> {
+    if st.is_offline() {
+        return Err(relay_client::RegisterError { name_problem: false, message: OFFLINE_RELAY.into() });
+    }
     let cfg = st.db.read().await.settings.sharing.clone();
     let base = relay_client::relay_base(&cfg.relay_url);
     if !force && !cfg.secret.is_empty() && !cfg.name.is_empty() {
@@ -232,7 +250,7 @@ async fn status_json(st: &AppState) -> Value {
     let cfg = st.db.read().await.settings.sharing.clone();
     let base = relay_client::relay_base(&cfg.relay_url);
     let Some(s) = sharing(st) else {
-        return json!({"available": false, "relay_host": relay_client::relay_host(&base)});
+        return json!({"available": false, "offline": st.is_offline(), "relay_host": relay_client::relay_host(&base)});
     };
     let lan_port = s.lan.lock().expect("lan").as_ref().map(|l| l.port);
     let lan_ip = lan_ip();
@@ -241,6 +259,7 @@ async fn status_json(st: &AppState) -> Value {
         (lan_port.is_some() && lan_ip.is_none())
             .then(|| "This computer isn't connected to a local network (Wi-Fi or Ethernet).".to_string())
     });
+    let offline = st.is_offline();
     let relay = s.relay_status.lock().expect("relay status").clone();
     let host = relay_client::relay_host(&base);
     let url = relay.url.clone().or_else(|| (!cfg.name.is_empty()).then(|| default_public_url(&base, &cfg.name)));
@@ -248,12 +267,13 @@ async fn status_json(st: &AppState) -> Value {
     let domain = url.as_deref().map(relay_client::relay_host).and_then(|h| h.split_once('.').map(|(_, d)| d.to_string()));
     json!({
         "available": true,
+        "offline": st.is_offline(),
         "local": format!("http://{}", s.local),
         "lan": {"enabled": cfg.lan, "url": lan_url, "error": lan_error},
         "internet": {
-            "enabled": cfg.internet,
+            "enabled": cfg.internet && !offline,
             "name": cfg.name,
-            "url": url,
+            "url": url.filter(|_| !offline),
             "state": relay.state,
             "error": relay.error,
             "domain": domain.unwrap_or_else(|| host.clone()),
@@ -283,6 +303,9 @@ struct SharingPatch {
 async fn put_sharing(State(st): S, Json(p): Json<SharingPatch>) -> ApiResult {
     if sharing(&st).is_none() {
         return Err(bad("Sharing to the local network or the internet is only available when iRoof.top runs on this computer."));
+    }
+    if st.is_offline() && (p.internet == Some(true) || p.name.is_some()) {
+        return Err(bad(OFFLINE_RELAY));
     }
     let _g = st.control.lock().await;
     if let Some(name) = p.name.map(|n| n.trim().to_ascii_lowercase()) {

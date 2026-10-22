@@ -135,6 +135,7 @@ c-46 -3 -74 48 -45 83 4 5 3 5 -5 1z"/></g>
     <header class="side-head" data-tauri-drag-region="deep">
       <button class="brand" id="brandBtn" title="Back to the roof" aria-label="iRoof.top: back to the roof"><span class="logo" aria-hidden="true"></span><span class="wordmark">i<span class="amp">&amp;</span>roof.top</span></button>
       <div class="head-actions">
+        <button class="offline-badge hidden" id="offlineBadge" title="Offline mode: only local models, nothing leaves this computer" aria-label="Offline mode is on. Open Settings"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-lock"></use></svg>Offline</button>
         <button class="icon-btn" id="themeBtn" title="Theme: auto" aria-label="Toggle theme"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-auto"></use></svg></button>
         <button class="icon-btn" id="settingsBtn" title="Settings" aria-label="Settings"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-settings"></use></svg></button>
       </div>
@@ -319,6 +320,7 @@ c-46 -3 -74 48 -45 83 4 5 3 5 -5 1z"/></g>
 <dialog id="settingsDlg" aria-labelledby="sH">
   <form method="dialog" class="dlg wide compact" id="settingsForm">
     <div class="dlg-head"><h2 id="sH">Settings</h2><button type="button" class="icon-btn" data-close aria-label="Close"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-close"></use></svg></button></div>
+    <label class="switch-row offline-row"><span class="sw-text"><b>Offline: only local models, nothing leaves this computer</b><span class="muted small" id="sOfflineWhy"></span></span><input type="checkbox" class="switch" id="sOffline"></label>
     <div class="grid2">
       <div class="field">
         <div class="field-head"><label for="sBase">Base URL</label><button type="button" class="info-btn" aria-label="About: Base URL" aria-expanded="false" aria-controls="hBase"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-info"></use></svg></button></div>
@@ -334,8 +336,9 @@ c-46 -3 -74 48 -45 83 4 5 3 5 -5 1z"/></g>
           <option value="https://api.together.xyz/v1">Together</option>
           <option value="http://localhost:11434/v1">Ollama (this computer)</option>
           <option value="http://localhost:1234/v1">LM Studio (this computer)</option>
+          <option value="http://localhost:8081/v1">llama.cpp llama-server --port 8081 (this computer)</option>
         </datalist>
-        <div class="help" id="hBase" hidden>Any OpenAI-compatible <code>/chat/completions</code> endpoint: OpenAI, OpenRouter, Ollama (<code>http://localhost:11434/v1</code>), vLLM, LM Studio. Empty uses <code>OPENAI_BASE_URL</code> from the server environment.</div>
+        <div class="help" id="hBase" hidden>Any OpenAI-compatible <code>/chat/completions</code> endpoint: OpenAI, OpenRouter, Ollama (<code>http://localhost:11434/v1</code>), vLLM, LM Studio (<code>http://localhost:1234/v1</code>), llama.cpp <code>llama-server</code> (<code>http://localhost:8081/v1</code>: its default port 8080 is iRoof.top's, so start it with <code>llama-server --port 8081</code>). Empty uses <code>OPENAI_BASE_URL</code> from the server environment.</div>
       </div>
       <div class="field">
         <div class="field-head"><label for="sModel">Model</label><button type="button" class="info-btn" aria-label="About: Model" aria-expanded="false" aria-controls="hModel"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-info"></use></svg></button></div>

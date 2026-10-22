@@ -25,6 +25,8 @@ The variables can also live in a `.env` file next to where you start `rooftop`, 
 **Test** in Settings sends a tiny request and tells you in plain words what is wrong, for example
 "openrouter.ai rejected the API key (401)".
 
+Want nothing to leave your computer? Use a local model and [Offline mode](./offline).
+
 ## Your first chat
 
 ```

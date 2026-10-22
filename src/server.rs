@@ -3,7 +3,7 @@
 use crate::agent;
 use crate::chat::{Chat, Event, Item, timeline};
 use crate::import::{find_export_root, import_dir, safe_rel};
-use crate::mcp::{McpConfig, McpManager};
+use crate::mcp::McpConfig;
 use crate::model::{ChatExport, MediaKind, Message};
 use crate::prompt::{self, PromptOptions};
 use crate::state::{AppState, now_string};
@@ -308,6 +308,7 @@ async fn api_state(State(st): S) -> ApiResult {
             // Nothing can answer until a key is set (local endpoints usually need none).
             "needs_key": cfg.api_key.trim().is_empty() && !crate::llm::is_local(&cfg.base_url),
         },
+        "offline": {"on": st.is_offline(), "forced": st.offline_forced()},
         "version": env!("CARGO_PKG_VERSION"),
     })))
 }
@@ -1076,6 +1077,7 @@ async fn get_prompt(State(st): S, Path(id): Path<String>) -> ApiResult {
 async fn get_settings(State(st): S) -> ApiResult {
     let s = st.db.read().await.settings.clone();
     Ok(Json(json!({
+        "offline": {"on": st.is_offline(), "setting": s.offline, "forced": st.offline_forced()},
         "base_url": s.llm.base_url,
         "model": s.llm.model,
         "temperature": s.llm.temperature,
@@ -1116,6 +1118,8 @@ struct SettingsPatch {
     #[serde(rename = "mcpServers")]
     mcp_servers: Option<Value>,
     telegram: Option<TelegramPatch>,
+    /// Offline mode: only local models, nothing leaves this computer.
+    offline: Option<bool>,
 }
 
 async fn put_settings(State(st): S, Json(p): Json<SettingsPatch>) -> ApiResult {
@@ -1146,7 +1150,11 @@ async fn put_settings(State(st): S, Json(p): Json<SettingsPatch>) -> ApiResult {
     }
     let mut db = st.db.write().await;
     let s = &mut db.settings;
+    let was_offline = st.is_offline();
     let telegram_changed = p.telegram.is_some();
+    if let Some(v) = p.offline {
+        s.offline = v;
+    }
     if let Some(t) = p.telegram {
         if let Some(m) = t.mode {
             s.telegram.mode = m;
@@ -1182,11 +1190,16 @@ async fn put_settings(State(st): S, Json(p): Json<SettingsPatch>) -> ApiResult {
         changed
     });
     st.paths.save_settings(s)?;
-    if changed_mcp {
-        *st.mcp.lock().await = McpManager::new(s.mcp_servers.clone()).with_workspace(st.paths.root.join("mcp"));
+    st.set_offline_setting(s.offline);
+    let offline_changed = st.is_offline() != was_offline;
+    if changed_mcp || offline_changed {
+        *st.mcp.lock().await = st.mcp_manager(s.mcp_servers.clone());
     }
     drop(db);
-    if telegram_changed {
+    if offline_changed {
+        crate::sharing::reapply(&st).await;
+    }
+    if telegram_changed || offline_changed {
         let _g = st.control.lock().await;
         crate::tgbot::apply(&st).await.map_err(|e| ApiError(StatusCode::BAD_GATEWAY, format!("Telegram: {e:#}")))?;
     }
@@ -1217,7 +1230,7 @@ async fn mcp_status(State(st): S) -> ApiResult {
 
 async fn mcp_reconnect(State(st): S) -> ApiResult {
     let cfg = st.mcp.lock().await.config().clone();
-    let mut fresh = McpManager::new(cfg).with_workspace(st.paths.root.join("mcp"));
+    let mut fresh = st.mcp_manager(cfg);
     fresh.ensure_connected().await;
     let status = fresh.status();
     *st.mcp.lock().await = fresh;

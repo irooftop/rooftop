@@ -601,6 +601,12 @@ fn header_params(schema: &Value) -> Result<Vec<(Vec<String>, String)>, String> {
     Ok(out)
 }
 
+/// The URL of a server reached over HTTP(S), `None` for a stdio server.
+fn remote_url(cfg: &ServerConfig) -> Option<String> {
+    let stdio = cfg.command.is_some() && cfg.kind.as_deref() != Some("http") && cfg.kind.as_deref() != Some("sse");
+    if stdio { None } else { Some(cfg.url.clone().unwrap_or_default()) }
+}
+
 impl McpClient {
     pub async fn connect(name: &str, cfg: &ServerConfig) -> Result<Self> {
         let stdio = cfg.command.is_some() && cfg.kind.as_deref() != Some("http") && cfg.kind.as_deref() != Some("sse");
@@ -893,6 +899,8 @@ pub struct McpManager {
     /// OpenAI function name -> (server, tool)
     names: HashMap<String, (String, String)>,
     workspace_root: Option<std::path::PathBuf>,
+    /// Offline mode: servers reached over HTTP must be local. (stdio servers are programs on this computer.)
+    offline: Option<Arc<std::sync::atomic::AtomicBool>>,
 }
 
 fn sanitize(s: &str) -> String {
@@ -907,6 +915,11 @@ impl McpManager {
     /// Stdio servers run in `<root>/<server name>` (created on demand).
     pub fn with_workspace(mut self, root: std::path::PathBuf) -> Self {
         self.workspace_root = Some(root);
+        self
+    }
+
+    pub fn with_offline(mut self, flag: Arc<std::sync::atomic::AtomicBool>) -> Self {
+        self.offline = Some(flag);
         self
     }
 
@@ -929,6 +942,22 @@ impl McpManager {
                 (n.clone(), c)
             })
             .collect();
+        // Offline mode: a server reached over HTTP must be on this computer or network.
+        let offline = self.offline.as_ref().is_some_and(|f| f.load(std::sync::atomic::Ordering::Relaxed));
+        let todo = if offline {
+            let mut allowed = Vec::new();
+            for (n, c) in todo {
+                match remote_url(&c).map(|u| crate::llm::offline_check(&u)) {
+                    Some(Err(e)) => {
+                        self.errors.insert(n, e.to_string());
+                    }
+                    _ => allowed.push((n, c)),
+                }
+            }
+            allowed
+        } else {
+            todo
+        };
         let results = futures::future::join_all(todo.into_iter().map(|(n, c)| async move {
             let r = tokio::time::timeout(Duration::from_secs(45), McpClient::connect(&n, &c)).await;
             (n, r)

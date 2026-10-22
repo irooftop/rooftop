@@ -2,17 +2,23 @@
 
 Environment variables, a `.env` file in the working directory, or the matching `rooftop` flags
 ([CLI](./cli)). Values set in **Settings** win over the environment for the LLM endpoint, model, key, temperature,
-history budget, tool steps, MCP servers and the Telegram bot. `TELEGRAM_BOT_TOKEN` wins over Settings.
+history budget, tool steps, MCP servers, the Telegram bot and Offline mode. `TELEGRAM_BOT_TOKEN` wins over Settings.
 
 ## Model
 
 | Variable | Default | |
 |---|---|---|
-| `OPENAI_BASE_URL` | `https://openrouter.ai/api/v1` | any OpenAI-compatible API: OpenAI, OpenRouter, Gemini, Mistral, DeepSeek, Groq, Ollama, LM Studio, vLLM… |
+| `OPENAI_BASE_URL` | `https://openrouter.ai/api/v1` | any OpenAI-compatible API: OpenAI, OpenRouter, Gemini, Mistral, DeepSeek, Groq, Ollama (`http://localhost:11434/v1`), LM Studio (`http://localhost:1234/v1`), llama.cpp (`http://localhost:8080/v1`), vLLM… |
 | `OPENAI_API_KEY` | – | bearer token |
 | `OPENAI_MODEL` | `openai/gpt-6-luna` | must support tool calling |
 | `OPENAI_TEMPERATURE` | provider default | |
 | `OPENAI_MEDIA_MODEL` | `OPENAI_MODEL` | describes images and transcribes voice, e.g. `xiaomi/mimo-v2.6-flash` |
+
+## Offline
+
+| Variable | Default | |
+|---|---|---|
+| `ROOFTOP_OFFLINE` | off | `1`, `true`, `yes` or `on`: only local models and MCP servers (this computer or network), no internet sharing, no Telegram. The same as the **Offline** switch in Settings, but Settings can't turn it off. The desktop app honours it too. [Offline & privacy](../guide/offline) |
 
 ## Server
 

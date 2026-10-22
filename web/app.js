@@ -203,6 +203,7 @@ applyTheme();
 async function loadState() {
   if (GUEST) return null;
   S.state = await api("/api/state");
+  OFFLINE = !!S.state.offline?.on; renderOfflineBadge();
   renderSidebar();
   return S.state;
 }
@@ -942,6 +943,7 @@ $("#settingsBtn").onclick = async () => {
     $("#sBudget").value = s.history_budget_chars; $("#sSteps").value = s.max_tool_steps;
     $("#sMediaModel").value = s.media_model || ""; $("#sMediaModel").placeholder = s.env_media_model || "same as Model";
     $("#sMcp").value = JSON.stringify(s.mcpServers || {}, null, 2);
+    renderOffline(s.offline);
     openTgSettings(s.telegram || {});
     hideTip();
     $("#mcpStatus").innerHTML = `<div class="muted small">Checking MCP servers…</div>`;
@@ -954,6 +956,38 @@ $("#settingsBtn").onclick = async () => {
 // Telegram: the mode applies right away (no Save needed), and the status follows the bot.
 const TG = { env: false, mode: "off", relayHost: "iroof.top", poll: null, busy: false, last: null, sig: null };
 const TG_TOKEN_HINT = `Create a bot with <a href="https://t.me/BotFather" target="_blank" rel="noopener noreferrer">@BotFather</a>, paste its token above and press <b>Connect</b>.`;
+// Offline mode applies right away: the model, sharing and Telegram follow it.
+function renderOffline(o) {
+  OFFLINE = !!o?.on; OFFLINE_FORCED = !!o?.forced;
+  $("#sOffline").checked = OFFLINE;
+  $("#sOffline").disabled = OFFLINE_FORCED;
+  $("#sOfflineWhy").textContent = o?.forced ? "Set by --offline / ROOFTOP_OFFLINE: restart without it to turn it off." : "Only local models (this computer or network). No internet sharing, no Telegram.";
+  $("#sTgModes").closest(".tg-settings").classList.toggle("is-offline", OFFLINE);
+  $$("#sTgModes input").forEach(i => { i.disabled = OFFLINE || TG.env; });
+  $("#sTgTokenRow").classList.toggle("hidden", OFFLINE || TG.mode !== "own" || TG.env);
+  if (OFFLINE) tgNote(`<div class="tg-note">${icon("info")}<span>Offline mode: the Telegram bot is off.</span></div>`);
+  else if (TG.mode === "off" && !TG.env) tgNote("");
+  renderOfflineBadge();
+}
+function renderOfflineBadge() {
+  $("#offlineBadge").classList.toggle("hidden", !OFFLINE);
+}
+let OFFLINE = false, OFFLINE_FORCED = false;
+$("#offlineBadge").onclick = () => $("#settingsBtn").click();
+$("#sOffline").addEventListener("change", async () => {
+  const box = $("#sOffline"), want = box.checked;
+  box.disabled = true;
+  try {
+    await api("/api/settings", { method: "PUT", body: { offline: want } });
+    const s = await api("/api/settings");
+    renderOffline(s.offline);
+    if (!s.offline.on) openTgSettings(s.telegram || {});
+    loadState().catch(() => { });
+    api("/api/mcp").then(r => renderMcpStatus(r.servers)).catch(() => { });
+    toast(s.offline.on ? "Offline mode is on" : "Offline mode is off");
+  } catch (e) { box.checked = !want; toast(e.message, { error: true }); }
+  finally { box.disabled = OFFLINE_FORCED; }
+});
 function openTgSettings(t) {
   TG.env = !!t.env; TG.mode = t.mode || "off"; TG.relayHost = t.relay_host || "iroof.top"; TG.sig = null; TG.last = null;
   $$(".tg-relay-host").forEach(e => { e.textContent = TG.relayHost; });
@@ -964,7 +998,8 @@ function openTgSettings(t) {
   tgNote(TG.mode === "off" && !TG.env ? "" : tgPending("Checking the bot…"));
   refreshTg();
   clearInterval(TG.poll);
-  TG.poll = setInterval(() => { if (!document.hidden && (TG.mode !== "off" || TG.env)) refreshTg(); }, 3000);
+  TG.poll = setInterval(() => { if (!document.hidden && !OFFLINE && (TG.mode !== "off" || TG.env)) refreshTg(); }, 3000);
+  if (OFFLINE) renderOffline({ on: true, forced: OFFLINE_FORCED });
 }
 $("#settingsDlg").addEventListener("close", () => { clearInterval(TG.poll); TG.poll = null; if ($("#tgAddDlg").open) $("#tgAddDlg").close(); });
 const tgPending = text => `<div class="tg-note"><span class="spin" aria-hidden="true"></span><span>${text}</span></div>`;
@@ -1861,6 +1896,7 @@ function reachHtml() {
     connecting: `Connecting to ${relay}…`,
     error: esc(net.error || "Can't connect"),
   }[netState];
+  const offline = !!n.offline;
   const lanAddr = lanState === "live" ? `<div class="reach-addr"><span class="addr mono">${esc(hostOf(lan.url))}</span></div>` : "";
   let netAddr = "";
   if (net.enabled) {
@@ -1871,7 +1907,10 @@ function reachHtml() {
           <div class="reach-hint muted small">3–32 lowercase letters, digits or hyphens. Links you already sent stop working at the old address.</div>`
       : net.url ? `<div class="reach-addr"><span class="addr mono${netState === "live" ? "" : " dim"}">${esc(hostOf(net.url))}</span><button type="button" class="btn sm ghost" data-reach-rename title="Change your address">${icon("edit")}<span>Change</span></button></div>` : "";
   }
-  return row("lan", "wifi", "Wi‑Fi and local network", lanState, lanDesc, lanAddr) + row("internet", "globe", "Internet", netState, netDesc, netAddr);
+  const netRow = offline
+    ? row("internet", "globe", "Internet", "off", "Offline mode is on: nothing is shared over the internet. Turn it off in Settings.", "").replace('data-reach-toggle="internet"', 'data-reach-toggle="internet" disabled')
+    : row("internet", "globe", "Internet", netState, netDesc, netAddr);
+  return row("lan", "wifi", "Wi‑Fi and local network", lanState, lanDesc, lanAddr) + netRow;
 }
 const reachNameOk = v => /^[a-z0-9](?:[a-z0-9-]{1,30}[a-z0-9])$/.test(v) && v !== (SH.net.internet?.name || "");
 function renderReach() {

@@ -63,6 +63,8 @@ computer, so the Share dialog and the link editor have two switches. Each says w
 * The Internet name is yours to pick and change (**Change** next to the address). The relay forwards only
   `/s/…`, `/api/s/…` and page assets, drops cookies both ways, and shows an "offline" page while the app is closed.
 * Want your own relay instead of iroof.top? See [Relay hub](../reference/relay-hub).
+* **Offline mode** turns the Internet switch off and locks it, Wi‑Fi keeps working. What the relay can see:
+  [Offline & privacy](../guide/offline#share-with-friends-safely).
 
 ## Protection
 

@@ -191,6 +191,10 @@ impl Ctx<'_> {
                     if !matches!(u.scheme(), "https" | "http") {
                         return Err(anyhow!("`url` must be http(s)"));
                     }
+                    // The browser would fetch it: not in Offline mode, unless it is on this network.
+                    if self.state.is_offline() {
+                        crate::llm::offline_check(u.as_str())?;
+                    }
                     Media { kind: Some(MediaKind::Gif), url: Some(u.to_string()), ..Default::default() }
                 } else {
                     return Err(anyhow!("provide `gif_id` or `url`"));
