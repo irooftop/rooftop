@@ -74,6 +74,23 @@ The image has no Node.js and no ffmpeg. To use stdio MCP servers started with `n
 `RUN apk add nodejs npm`), or use a remote (HTTP) MCP server instead. To describe GIFs and videos from their frames,
 add `RUN apk add ffmpeg` the same way.
 
+### On a server with HTTPS
+
+[`deploy/`](deploy) runs iRoof.top behind [Caddy](https://caddyserver.com), which gets and renews the TLS certificate:
+
+```sh
+cd deploy
+sed -i 's/example.com/your.domain/g' Caddyfile        # the domain must already point at the server
+printf 'ROOFTOP_PASSWORD=%s\n' "$(openssl rand -base64 24)" > iroof.env && chmod 600 iroof.env
+docker compose up -d
+```
+
+Share links then use your domain (`https://your.domain/s/<name>`). The owner UI asks for the password, while share
+links, `/healthz` and the page assets stay public. The container runs read-only, without capabilities and with a memory
+limit, and `ROOFTOP_TRUST_PROXY` is on because Caddy sets the visitor's IP. Update with
+`docker compose pull && docker compose up -d`. Back up the `iroof-data` volume, which holds the exports, chats and
+settings.
+
 ### Configuration
 
 | Variable | Default | Meaning |

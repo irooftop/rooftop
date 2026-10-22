@@ -1,0 +1,14 @@
+# Replace example.com with your domain. Caddy gets and renews the certificate on its own.
+example.com {
+	encode zstd gzip
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		X-Content-Type-Options nosniff
+		-Server
+	}
+	reverse_proxy iroof:8080
+}
+
+www.example.com {
+	redir https://example.com{uri} permanent
+}

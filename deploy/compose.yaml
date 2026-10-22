@@ -1,0 +1,48 @@
+# iRoof.top on a server: Caddy (automatic HTTPS) in front of the rooftop container.
+#   1. Point your domain's A/AAAA record at the server and set it in ./Caddyfile.
+#   2. Create ./iroof.env (chmod 600):  ROOFTOP_PASSWORD=<long random>  and optionally TZ=Europe/Berlin
+#   3. docker compose up -d
+# Update: docker compose pull && docker compose up -d
+name: iroof
+
+x-logging: &logging
+  driver: json-file
+  options: { max-size: "10m", max-file: "3" }
+
+services:
+  caddy:
+    image: caddy:2
+    container_name: caddy
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    security_opt: ["no-new-privileges:true"]
+    logging: *logging
+
+  iroof:
+    image: ghcr.io/irooftop/rooftop:0.1
+    container_name: iroof
+    restart: unless-stopped
+    env_file: ./iroof.env
+    environment:
+      ROOFTOP_TRUST_PROXY: "true"   # Caddy replaces X-Forwarded-For from clients, so PIN throttling sees real IPs
+    volumes:
+      - iroof-data:/data
+    read_only: true
+    tmpfs: ["/tmp"]
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    mem_limit: 384m
+    pids_limit: 256
+    logging: *logging
+
+volumes:
+  caddy-data:
+  caddy-config:
+  iroof-data:
