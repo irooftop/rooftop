@@ -408,7 +408,9 @@ a **draft** GitHub Release, which you publish by hand. The app version comes fro
 (`vX.Y.Z`) for the Windows MSI. Publishing that release runs the *Homebrew* workflow. It renders `Formula/rooftop.rb`
 (built from the source tarball) and `Casks/irooftop.rb` (the two macOS DMGs) with `scripts/homebrew-tap.sh` and pushes
 them to [`irooftop/homebrew-tap`](https://github.com/irooftop/homebrew-tap). It needs the secret
-`HOMEBREW_TAP_DEPLOY_KEY`, the private half of a deploy key with write access to that repository only.
+`HOMEBREW_TAP_TOKEN`, a fine-grained token for that repository only with *Contents: read and write* (or
+`HOMEBREW_TAP_DEPLOY_KEY`, a write deploy key, where the organization allows deploy keys). Without it, the run skips
+the push with a notice, and `scripts/homebrew-tap.sh vX.Y.Z <tap checkout>` renders the same files by hand.
 
 The animation at the top of this page is `demo.svg`, built by `python3 scripts/demo-svg.py` (plain SVG and CSS, no
 scripts, so GitHub renders it).

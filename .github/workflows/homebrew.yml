@@ -1,7 +1,9 @@
 # Updates the Homebrew tap (irooftop/homebrew-tap) when a release is published:
 # Formula/rooftop.rb (server, built from source) and Casks/irooftop.rb (desktop DMGs).
-# Requires the repository secret HOMEBREW_TAP_DEPLOY_KEY: the private half of a deploy
-# key with write access to irooftop/homebrew-tap (and nothing else).
+# Needs one repository secret with write access to irooftop/homebrew-tap only:
+#   HOMEBREW_TAP_TOKEN       a fine-grained token: repository irooftop/homebrew-tap, Contents: read and write
+#   HOMEBREW_TAP_DEPLOY_KEY  or the private half of a write deploy key (if the organization allows deploy keys)
+# Without either, the run skips the push with a notice.
 name: Homebrew
 
 on:
@@ -25,20 +27,33 @@ jobs:
     runs-on: ubuntu-latest
     env:
       TAG: ${{ github.event.release.tag_name || inputs.tag }}
+      HAS_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN != '' }}
+      HAS_KEY: ${{ secrets.HOMEBREW_TAP_DEPLOY_KEY != '' }}
     steps:
+      - name: Check credentials for the tap
+        id: creds
+        run: |
+          if [ "$HAS_TOKEN" = true ] || [ "$HAS_KEY" = true ]; then echo "ok=true" >> "$GITHUB_OUTPUT"
+          else echo "::notice::No HOMEBREW_TAP_TOKEN or HOMEBREW_TAP_DEPLOY_KEY secret: the tap was not updated"; echo "ok=false" >> "$GITHUB_OUTPUT"; fi
       - uses: actions/checkout@v5
+        if: steps.creds.outputs.ok == 'true'
       - uses: actions/checkout@v5
+        if: steps.creds.outputs.ok == 'true'
         with:
           repository: irooftop/homebrew-tap
           path: tap
-          ssh-key: ${{ secrets.HOMEBREW_TAP_DEPLOY_KEY }}
+          token: ${{ secrets.HOMEBREW_TAP_TOKEN || github.token }}
+          ssh-key: ${{ secrets.HOMEBREW_TAP_TOKEN == '' && secrets.HOMEBREW_TAP_DEPLOY_KEY || '' }}
       - name: Render the formula and the cask
+        if: steps.creds.outputs.ok == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
         run: scripts/homebrew-tap.sh "$TAG" tap
       - name: Check Ruby syntax
+        if: steps.creds.outputs.ok == 'true'
         run: ruby -c tap/Formula/rooftop.rb && ruby -c tap/Casks/irooftop.rb
       - name: Push to the tap
+        if: steps.creds.outputs.ok == 'true'
         working-directory: tap
         run: |
           git config user.name "github-actions[bot]"
