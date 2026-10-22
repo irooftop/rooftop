@@ -311,7 +311,7 @@ fn hash_files(linked: &[Linked], report: Report) -> Result<HashMap<PathBuf, Stri
     let hashed = par_map(&paths, |p| {
         let digest = hash_file(p).with_context(|| format!("hashing {}", p.display()));
         let done = done.fetch_add(1, Ordering::Relaxed) + 1;
-        if done % 16 == 0 || done == paths.len() {
+        if done.is_multiple_of(16) || done == paths.len() {
             report(Progress { stage: Stage::Hashing, done, total: paths.len(), messages: 0 });
         }
         digest

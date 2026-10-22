@@ -20,7 +20,7 @@ const PER_PAGE: usize = 1000;
 /// Sender of message `n` (1-based): runs of 7 messages, so pages start in the
 /// middle of a run (joined message, no `from_name`) and at run boundaries.
 fn sender(n: usize) -> &'static str {
-    if (n / 7) % 2 == 0 { "Anna" } else { "Boris" }
+    if (n / 7).is_multiple_of(2) { "Anna" } else { "Boris" }
 }
 
 /// One `messagesN.html` holding messages `first..first + count`.

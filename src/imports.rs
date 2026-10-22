@@ -135,7 +135,7 @@ pub type Reporter = Arc<dyn Fn(Progress) + Send + Sync>;
 pub fn log_progress() -> Reporter {
     let last = AtomicUsize::new(usize::MAX);
     Arc::new(move |p: Progress| {
-        let quarter = if p.total == 0 { 0 } else { p.done * 4 / p.total };
+        let quarter = (p.done * 4).checked_div(p.total).unwrap_or(0);
         let key = (p.stage as usize) * 8 + quarter;
         if last.swap(key, Ordering::Relaxed) != key {
             tracing::info!("import: {:?} {}/{} ({} messages)", p.stage, p.done, p.total, p.messages);

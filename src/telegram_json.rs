@@ -125,7 +125,7 @@ impl<'de> Visitor<'de> for Messages<'_> {
         while let Some(m) = seq.next_element::<Value>()? {
             self.out.messages.extend(parse_message(&m));
             seen += 1;
-            if seen % REPORT_EVERY == 0 {
+            if seen.is_multiple_of(REPORT_EVERY) {
                 (self.progress)(self.out.messages.len());
             }
         }
