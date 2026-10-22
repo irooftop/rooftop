@@ -19,3 +19,7 @@
 .vp-doc .wide { overflow-x: auto; }
 .vp-doc .wide img { min-width: 640px; display: block; margin: 0 auto; }
 .VPHero .image-src { max-width: 340px; max-height: 340px; }
+/* Home: the demo right under the features, then readable prose width. */
+.vp-doc .home-demo { max-width: 860px; margin: 8px auto 40px; }
+.vp-doc .home-demo img { width: 100%; height: auto; display: block; }
+.VPHome .vp-doc { max-width: 960px; margin: 0 auto; }

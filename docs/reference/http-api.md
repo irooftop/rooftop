@@ -8,6 +8,11 @@ JSON over HTTP. With `ROOFTOP_PASSWORD` set, the owner API needs HTTP Basic auth
 |---|---|---|
 | GET | `/api/state` | exports, chats, share links, LLM info |
 | POST | `/api/exports` | multipart upload: folder files with relative names, or a `.zip`. Answers `202 {"id"}` at once and imports in the background |
+| POST | `/api/uploads` | start a batched upload (what the web UI uses): `{"id"}` |
+| POST | `/api/uploads/{id}/files` | multipart batch of files with relative names; resending a batch replaces its files: `{"files", "bytes"}` |
+| POST | `/api/uploads/{id}/check` | after the chat files, before the media: `{"bytes"}` still to send → `{title, messages, existing, fits, free_bytes, needed_bytes}` (already imported? enough disk space?) |
+| POST | `/api/uploads/{id}/import` | import everything uploaded so far: `202 {"id"}` of the import job |
+| DELETE | `/api/uploads/{id}` | drop an unfinished upload (abandoned ones are removed after 24 h and on restart) |
 | GET | `/api/imports/{id}` | progress of an import job, see below |
 | GET · DELETE | `/api/exports/{id}` | details with the media library · delete with its chats |
 | POST | `/api/exports/{id}/describe` | describe the media library |

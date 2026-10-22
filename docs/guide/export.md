@@ -26,16 +26,26 @@ A chat exported without media is a single `.txt`, and that works too.
 Exports of 100,000+ messages and many gigabytes work the same way: drop the folder. The page shows what is happening:
 
 1. **Reading folder…** counts the files (the browser can take a moment to list tens of thousands).
-2. **Uploading 1.2 GB of 3.4 GB (35%)**: the files are copied to the app's data folder. There is no size limit when you run it on your own computer.
-3. **Reading messages: page 37 of 121 · 36,000 messages**: all pages are read once, in parallel.
-4. **Checking media** and **Moving media**: files are hashed to find duplicates and moved (not copied twice) into the data folder.
-5. **Saving**, then the *New chat* dialog opens.
+2. **The chat goes first.** The message pages (or `result.json`, or the WhatsApp `.txt`) are uploaded and read before any media. If this export is **already imported**, the import ends here and opens it, and no media is uploaded. If the media won't fit on the disk, you're told how much space is needed before anything big is sent.
+3. **Uploading 1.2 GB of 3.4 GB (35%) · 9,000 of 30,905 files**: the media follow in small batches, one after the other. The browser never builds one giant request, and a batch that breaks off is retried on its own. There is no size limit when you run it on your own computer.
+4. **Reading messages: page 37 of 121 · 36,000 messages**: all pages are read once, in parallel.
+5. **Checking media** and **Moving media**: files are hashed to find duplicates and moved (not copied twice) into the data folder.
+6. **Saving**, then the *New chat* dialog opens.
 
-Only one import runs at a time; an error stays visible in the drop zone and you can choose the folder again. Importing the same export twice is detected and does nothing.
+Only one import runs at a time; an error stays visible in the drop zone and you can choose the folder again.
+
+::: details When a file can't be uploaded
+A file the browser can no longer read (moved, changed, or an iCloud/OneDrive placeholder that isn't downloaded) is
+found and skipped, and so is a single file that keeps breaking its batch: the batch is split until that file is
+isolated. Skipped media shows as missing in the chat; the message after the import names one, and the browser console
+lists all. When the chat file itself can't be sent, the import stops and names it. Errors say what the server
+received, e.g. `the server received 1,200 of 4,096 bytes`, so a connection or browser problem is easy to tell apart.
+:::
 
 Nothing leaves your computer during an import and no model is called. Media is described only when you press **Describe** in the media library.
 
 With `rooftop --import <folder>` the folder is read in place and its files are copied, never moved; progress is logged.
+For a huge export on the same computer this is the quickest way: no upload, and no second copy in a temporary folder.
 
 ## What is understood
 

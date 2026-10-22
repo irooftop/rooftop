@@ -15,6 +15,23 @@ model and [Offline mode](../guide/offline) the photos never leave your computer.
 
 When one kind dominates, the style profile says so, e.g. "talks mostly in voice messages (10 of 10)".
 
+### Big libraries
+
+A long chat can hold tens of thousands of stickers, GIFs and photos. The media library helps you spend the model's
+tokens where they matter:
+
+| Control | What it does |
+|---|---|
+| Kind tabs | All, Missing, Described, Stickers, GIFs, Photos, Videos, Voice, with counts |
+| Sort | most used (default), least used, recently used, earliest used |
+| Use count | hide items used fewer than 2, 3, 5, 10 or 25 times |
+| Search | in descriptions and ids |
+
+**Describe N with AI** describes exactly what is shown and not described yet, **top to bottom in the chosen order**,
+four at a time. Each description is saved as soon as it arrives. The progress line shows how many are done, failures,
+the rate and the time left. The same button turns into **Stop**: stop at any time, and the next run continues with
+the rest. A good start for a big chat: *Most used first* and *Used 3+ times*.
+
 ## Your voice messages
 
 With an empty composer the send button becomes a **microphone**, as in Telegram. The recording is converted to WAV in
