@@ -173,7 +173,7 @@ pub struct Staged {
 /// Parses the export at `src` (a directory or a WhatsApp `.txt` file).
 pub fn parse(src: &Path, report: Report) -> Result<Staged> {
     let (root, kind) = detect_export(src)
-        .context("no supported chat export found (expected Telegram messages.html, Telegram result.json or a WhatsApp chat .txt)")?;
+        .context("no messages.html, result.json or WhatsApp .txt found in the upload")?;
     let parsed = match kind {
         ExportKind::TelegramHtml => telegram::parse_export_dir(&root, report)?,
         ExportKind::TelegramJson => telegram_json::parse_export_dir(&root, report)?,

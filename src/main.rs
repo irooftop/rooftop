@@ -34,8 +34,8 @@ struct ServeArgs {
     /// Require HTTP Basic auth with this password.
     #[arg(long, env = "ROOFTOP_PASSWORD", hide_env_values = true)]
     password: Option<String>,
-    /// Maximum upload size in MiB.
-    #[arg(long, env = "ROOFTOP_MAX_UPLOAD_MB", default_value_t = 2048)]
+    /// Maximum upload size in MiB for the owner (0: unlimited; exports are many GB).
+    #[arg(long, env = "ROOFTOP_MAX_UPLOAD_MB", default_value_t = 0)]
     max_upload_mb: usize,
     /// Trust `X-Forwarded-For` / `X-Real-IP` for the client IP (PIN throttling). Only behind a reverse proxy.
     #[arg(long, env = "ROOFTOP_TRUST_PROXY", default_value_t = false, action = clap::ArgAction::Set, num_args = 0..=1, default_missing_value = "true")]
@@ -171,7 +171,7 @@ async fn serve(args: ServeArgs) -> Result<()> {
         None => None,
     };
     for dir in args.import.iter().filter(|d| !d.as_os_str().is_empty()) {
-        match server::import_into_store(&state, dir.clone()).await {
+        match rooftop::imports::run(&state, dir.clone(), rooftop::import::Placement::Copy, rooftop::imports::log_progress()).await {
             Ok((rec, created)) => {
                 let has_chat = state.db.read().await.chats.values().any(|c| c.export_id == rec.id);
                 if !has_chat

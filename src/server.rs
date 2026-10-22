@@ -2,7 +2,7 @@
 
 use crate::agent;
 use crate::chat::{Chat, Event, Item, timeline};
-use crate::import::{find_export_root, import_dir, safe_rel};
+use crate::import::safe_rel;
 use crate::mcp::McpConfig;
 use crate::model::{ChatExport, MediaKind, Message};
 use crate::prompt::{self, PromptOptions};
@@ -10,7 +10,7 @@ use crate::state::{AppState, now_string};
 use crate::store::ExportRecord;
 use crate::style::infer_reactors;
 use crate::tools;
-use anyhow::{Context, anyhow};
+use anyhow::anyhow;
 use axum::body::Body;
 use axum::extract::{DefaultBodyLimit, Multipart, Path, Query, Request, State};
 use axum::http::{HeaderMap, HeaderValue, StatusCode, header};
@@ -53,6 +53,8 @@ pub(crate) type ApiResult<T = Json<Value>> = Result<T, ApiError>;
 
 pub struct ServerOptions {
     pub password: Option<String>,
+    /// Largest request body the owner routes accept; 0 means no limit (the default:
+    /// exports are many GB, and the owner uploads from their own computer).
     pub max_upload_bytes: usize,
     /// Take the client IP for PIN throttling from `X-Forwarded-For` / `X-Real-IP`
     /// (only behind a reverse proxy that sets them).
@@ -63,7 +65,7 @@ pub struct ServerOptions {
 
 impl Default for ServerOptions {
     fn default() -> Self {
-        Self { password: None, max_upload_bytes: 2048 * 1024 * 1024, trust_proxy: false, relay_hub: None }
+        Self { password: None, max_upload_bytes: 0, trust_proxy: false, relay_hub: None }
     }
 }
 
@@ -114,6 +116,7 @@ pub fn router(state: Arc<AppState>, opts: ServerOptions) -> Router {
         .route("/", get(index))
         .route("/api/state", get(api_state))
         .route("/api/exports", post(upload_export))
+        .route("/api/imports/{id}", get(get_import))
         .route("/api/exports/{id}", get(get_export).delete(delete_export))
         .route("/api/exports/{id}/describe", post(describe_export))
         .route("/api/exports/{id}/library/{item}", patch(patch_library_item))
@@ -144,7 +147,10 @@ pub fn router(state: Arc<AppState>, opts: ServerOptions) -> Router {
         .merge(public_routes());
     let app = with_client_ip(app, trust_proxy)
         .route("/healthz", get(|| async { "ok" }))
-        .layer(DefaultBodyLimit::max(opts.max_upload_bytes))
+        .layer(match opts.max_upload_bytes {
+            0 => DefaultBodyLimit::disable(),
+            n => DefaultBodyLimit::max(n),
+        })
         .layer(tower_http::compression::CompressionLayer::new())
         .with_state(state);
     match opts.relay_hub {
@@ -313,112 +319,56 @@ async fn api_state(State(st): S) -> ApiResult {
     })))
 }
 
-/// Imports an export directory into the data store (dedup by fingerprint).
+/// Imports an export directory the caller owns (it is copied, never moved), without progress.
 /// Returns (record, newly_created).
 pub async fn import_into_store(st: &Arc<AppState>, src: PathBuf) -> anyhow::Result<(Arc<ExportRecord>, bool)> {
-    let _g = st.import_lock.lock().await;
-    let root = find_export_root(&src).ok_or_else(|| {
-        anyhow!(
-            "no supported chat export found in the upload (expected Telegram messages.html, Telegram result.json or a WhatsApp chat .txt)"
-        )
-    })?;
-    let id = uuid::Uuid::new_v4().simple().to_string()[..12].to_string();
-    let files = st.paths.export_files(&id);
-    // Parse first (cheap) to dedupe before copying media.
-    let probe_root = root.clone();
-    let probe = tokio::task::spawn_blocking(move || import_dir(&probe_root, None)).await??;
-    let fp = fingerprint(&probe);
-    if let Some(existing) = st.db.read().await.exports.values().find(|r| r.fingerprint == fp).cloned() {
-        return Ok((existing, false));
-    }
-    let files2 = files.clone();
-    let export = tokio::task::spawn_blocking(move || import_dir(&root, Some(&files2))).await??;
-    if export.messages.is_empty() {
-        let _ = std::fs::remove_dir_all(st.paths.export_dir(&id));
-        anyhow::bail!("the export contains no messages");
-    }
-    let rec = Arc::new(ExportRecord { id: id.clone(), imported_at: now_string(), fingerprint: fp, export });
-    st.paths.save_export(&rec)?;
-    st.db.write().await.exports.insert(id, rec.clone());
-    tracing::info!(title = %rec.export.title, messages = rec.export.messages.len(), "imported export");
-    Ok((rec, true))
+    crate::imports::run(st, src, crate::import::Placement::Copy, Arc::new(|_| {})).await
 }
 
-fn fingerprint(e: &ChatExport) -> String {
-    let mut h = Sha256::new();
-    h.update(e.title.as_bytes());
-    for m in &e.messages {
-        h.update(m.id.to_le_bytes());
-        h.update(m.date.as_deref().unwrap_or_default().as_bytes());
-        h.update(m.text.as_bytes());
-    }
-    hex::encode(h.finalize())[..24].to_string()
-}
-
-async fn upload_export(State(st): S, mut mp: Multipart) -> ApiResult {
+/// Streams the uploaded files to a temporary directory, then starts a background
+/// import job and answers `202 {"id": …}` at once: progress is `GET /api/imports/{id}`.
+async fn upload_export(State(st): S, mut mp: Multipart) -> ApiResult<(StatusCode, Json<Value>)> {
     let tmp = st.paths.tmp().join(uuid::Uuid::new_v4().simple().to_string());
-    tokio::fs::create_dir_all(&tmp).await.map_err(anyhow::Error::from)?;
-    let result = async {
-        let mut zips = Vec::new();
-        let mut count = 0usize;
-        while let Some(mut field) = mp.next_field().await.map_err(|e| bad(format!("upload failed: {e}")))? {
-            let Some(name) = field.file_name().map(|s| s.replace('\\', "/")) else { continue };
-            let rel = safe_rel(&name).ok_or_else(|| bad(format!("invalid file path `{name}`")))?;
-            let dest = tmp.join("files").join(&rel);
-            if let Some(p) = dest.parent() {
-                tokio::fs::create_dir_all(p).await.map_err(anyhow::Error::from)?;
-            }
-            let mut f = tokio::fs::File::create(&dest).await.map_err(anyhow::Error::from)?;
-            while let Some(chunk) = field.chunk().await.map_err(|e| bad(format!("upload failed: {e}")))? {
-                f.write_all(&chunk).await.map_err(anyhow::Error::from)?;
-            }
-            f.flush().await.map_err(anyhow::Error::from)?;
-            count += 1;
-            if name.to_lowercase().ends_with(".zip") {
-                zips.push(dest);
-            }
-        }
-        if count == 0 {
-            return Err(bad("no files uploaded"));
-        }
-        let mut src = tmp.join("files");
-        if find_export_root(&src).is_none() && !zips.is_empty() {
-            let out = tmp.join("unzipped");
-            let zip = zips[0].clone();
-            let out2 = out.clone();
-            tokio::task::spawn_blocking(move || unzip(&zip, &out2)).await.map_err(anyhow::Error::from)??;
-            src = out;
-        }
-        let (rec, created) = import_into_store(&st, src).await.map_err(|e| bad(format!("{e:#}")))?;
-        Ok(Json(json!({"export": export_summary(&rec), "created": created})))
+    let received = receive_files(&mut mp, &tmp).await;
+    if let Err(e) = received {
+        let _ = tokio::fs::remove_dir_all(&tmp).await;
+        return Err(e);
     }
-    .await;
-    let _ = tokio::fs::remove_dir_all(&tmp).await;
-    result
+    let job = st.imports.create();
+    let id = job.id();
+    tokio::spawn(crate::imports::run_upload(st.clone(), job, tmp, UNZIP_LIMIT));
+    Ok((StatusCode::ACCEPTED, Json(json!({"id": id}))))
 }
 
-fn unzip(zip: &std::path::Path, out: &std::path::Path) -> anyhow::Result<()> {
-    const MAX_TOTAL: u64 = 8 * 1024 * 1024 * 1024;
-    let f = std::fs::File::open(zip)?;
-    let mut archive = zip::ZipArchive::new(f).context("not a valid zip archive")?;
-    let mut total = 0u64;
-    for i in 0..archive.len() {
-        let mut entry = archive.by_index(i)?;
-        let Some(rel) = entry.enclosed_name() else { continue };
-        let dest = out.join(rel);
-        if entry.is_dir() {
-            std::fs::create_dir_all(&dest)?;
-            continue;
-        }
-        total += entry.size();
-        anyhow::ensure!(total <= MAX_TOTAL, "zip archive is too large when extracted");
+/// Largest total size an uploaded zip archive may unpack to.
+const UNZIP_LIMIT: u64 = 64 * 1024 * 1024 * 1024;
+
+async fn receive_files(mp: &mut Multipart, tmp: &std::path::Path) -> Result<(), ApiError> {
+    let io = |e: std::io::Error| ApiError::from(anyhow::Error::from(e));
+    let mut count = 0usize;
+    while let Some(mut field) = mp.next_field().await.map_err(|e| bad(format!("upload failed: {e}")))? {
+        let Some(name) = field.file_name().map(|s| s.replace('\\', "/")) else { continue };
+        let rel = safe_rel(&name).ok_or_else(|| bad(format!("invalid file path `{name}`")))?;
+        let dest = tmp.join("files").join(&rel);
         if let Some(p) = dest.parent() {
-            std::fs::create_dir_all(p)?;
+            tokio::fs::create_dir_all(p).await.map_err(io)?;
         }
-        let mut w = std::fs::File::create(&dest)?;
-        std::io::copy(&mut entry, &mut w)?;
+        let mut f = tokio::io::BufWriter::new(tokio::fs::File::create(&dest).await.map_err(io)?);
+        while let Some(chunk) = field.chunk().await.map_err(|e| bad(format!("upload failed: {e}")))? {
+            f.write_all(&chunk).await.map_err(io)?;
+        }
+        f.flush().await.map_err(io)?;
+        count += 1;
+    }
+    if count == 0 {
+        return Err(bad("no files uploaded"));
     }
     Ok(())
+}
+
+async fn get_import(State(st): S, Path(id): Path<String>) -> ApiResult {
+    let snap = st.imports.get(&id).ok_or_else(|| anyhow!("import not found"))?;
+    Ok(Json(json!(snap)))
 }
 
 async fn get_export(State(st): S, Path(id): Path<String>) -> ApiResult {
@@ -427,16 +377,21 @@ async fn get_export(State(st): S, Path(id): Path<String>) -> ApiResult {
     // Without ffmpeg, GIFs and videos can be described only from a thumbnail.
     v["ffmpeg"] = json!(crate::frames::ffmpeg().is_some());
     let dir = st.paths.export_files(&id);
-    v["library_items"] = rec
-        .export
-        .library
-        .iter()
-        .map(|i| {
-            let mut item = json!(i);
-            item["describable"] = json!(crate::describe::can_describe(&dir, i));
-            item
-        })
-        .collect();
+    v["library_items"] = tokio::task::spawn_blocking(move || {
+        let items: Vec<Value> = rec
+            .export
+            .library
+            .iter()
+            .map(|i| {
+                let mut item = json!(i);
+                item["describable"] = json!(crate::describe::can_describe(&dir, i));
+                item
+            })
+            .collect();
+        json!(items)
+    })
+    .await
+    .map_err(anyhow::Error::from)?;
     Ok(Json(v))
 }
 
@@ -476,8 +431,11 @@ async fn set_descriptions(st: &AppState, id: &str, updates: &[(String, Option<St
             item.description = d.clone();
         }
     }
-    st.paths.save_export(&new)?;
-    db.exports.insert(id.to_string(), Arc::new(new));
+    // Serializing a big export takes a while: keep it off the async workers.
+    let (paths, new) = (st.paths.clone(), Arc::new(new));
+    let saved = new.clone();
+    tokio::task::spawn_blocking(move || paths.save_export(&saved)).await.map_err(anyhow::Error::from)??;
+    db.exports.insert(id.to_string(), new);
     Ok(())
 }
 
