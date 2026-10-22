@@ -14,22 +14,13 @@ use tauri::{Manager, WebviewUrl, WebviewWindowBuilder};
 
 const MAX_UPLOAD_BYTES: usize = 2048 * 1024 * 1024;
 
-fn env_llm() -> LlmConfig {
-    LlmConfig {
-        base_url: std::env::var("OPENAI_BASE_URL").unwrap_or_else(|_| "https://openrouter.ai/api/v1".into()),
-        api_key: std::env::var("OPENAI_API_KEY").unwrap_or_default(),
-        model: std::env::var("OPENAI_MODEL").unwrap_or_else(|_| "openai/gpt-6-luna".into()),
-        temperature: std::env::var("OPENAI_TEMPERATURE").ok().and_then(|t| t.parse().ok()),
-    }
-}
-
 /// Load the data dir, bind 127.0.0.1:0 and serve in the background. Returns the bound address.
 fn start_server(data_dir: std::path::PathBuf) -> Result<SocketAddr> {
     std::fs::create_dir_all(&data_dir).with_context(|| format!("creating {}", data_dir.display()))?;
     let paths = Paths::new(data_dir.clone());
     let db = paths.load().with_context(|| format!("loading data dir {}", data_dir.display()))?;
     rooftop::llm::ensure_crypto_provider();
-    let state = AppState::new(paths, db, env_llm());
+    let state = AppState::new(paths, db, LlmConfig::from_env());
     let app = server::router(state.clone(), ServerOptions { password: None, max_upload_bytes: MAX_UPLOAD_BYTES, ..Default::default() });
     tauri::async_runtime::block_on(async move {
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.context("binding 127.0.0.1:0")?;

@@ -6,7 +6,8 @@ Some people mostly send photos, others mostly talk in voice messages. iRoof.top 
 
 In the media library, **Describe with AI** describes stickers, GIFs and photos and **transcribes voice messages** with
 the *media model*, which must accept images and audio. Set it in Settings or with `OPENAI_MEDIA_MODEL`, for example
-`google/gemini-3.5-flash-lite` on OpenRouter.
+`google/gemini-3.5-flash-lite` on OpenRouter. Descriptions are only made when you press the button, and with a local
+model and [Offline mode](../guide/offline) the photos never leave your computer.
 
 ```text
 <voice message 0:05: «what was said»>

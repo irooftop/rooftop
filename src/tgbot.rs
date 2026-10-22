@@ -550,13 +550,22 @@ pub fn stop(st: &AppState) {
 /// Uses `TELEGRAM_BOT_TOKEN` for the bot (it wins over Settings).
 pub fn set_env_bot(st: &Arc<AppState>, cfg: BotConfig) -> Result<()> {
     let _ = st.telegram_env.set(cfg.clone());
+    // Offline mode: the bot stays stopped (`apply` starts it once Offline mode is off).
+    if st.is_offline() {
+        return Ok(());
+    }
     start(st, cfg)
 }
 
 /// Starts, switches or stops the bot to match Settings → Telegram.
 pub async fn apply(st: &Arc<AppState>) -> Result<()> {
-    if st.telegram_env.get().is_some() {
+    // Offline mode: no Telegram, own bot or shared.
+    if st.is_offline() {
+        stop(st);
         return Ok(());
+    }
+    if let Some(env) = st.telegram_env.get() {
+        return if bot(st).is_none() { start(st, env.clone()) } else { Ok(()) };
     }
     let tg = st.db.read().await.settings.telegram.clone();
     let cfg = match tg.mode {

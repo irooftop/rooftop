@@ -26,6 +26,10 @@ pub struct AppState {
     /// Local network / internet sharing, when the owner UI runs on this device.
     pub sharing: std::sync::OnceLock<Arc<crate::sharing::Sharing>>,
     /// Serializes reconfiguration of the bot and of sharing.
+    /// Offline mode (effective): shared with the LLM client.
+    offline: Arc<std::sync::atomic::AtomicBool>,
+    /// Offline mode forced by `--offline` / `ROOFTOP_OFFLINE`: Settings can't turn it off.
+    offline_forced: std::sync::atomic::AtomicBool,
     pub control: Mutex<()>,
 }
 
@@ -39,11 +43,15 @@ pub fn now_string() -> String {
 
 impl AppState {
     pub fn new(paths: Paths, db: Db, env_llm: LlmConfig) -> Arc<Self> {
-        let mcp = McpManager::new(db.settings.mcp_servers.clone()).with_workspace(paths.root.join("mcp"));
+        let llm = LlmClient::new();
+        let forced = crate::llm::offline_from_env();
+        let offline = llm.offline_flag();
+        offline.store(forced || db.settings.offline, std::sync::atomic::Ordering::Relaxed);
+        let mcp = McpManager::new(db.settings.mcp_servers.clone()).with_workspace(paths.root.join("mcp")).with_offline(offline.clone());
         Arc::new(Self {
             paths,
             db: RwLock::new(db),
-            llm: LlmClient::new(),
+            llm,
             env_llm,
             mcp: Mutex::new(mcp),
             gen_locks: Default::default(),
@@ -53,7 +61,35 @@ impl AppState {
             telegram_env: Default::default(),
             sharing: Default::default(),
             control: Mutex::new(()),
+            offline,
+            offline_forced: forced.into(),
         })
+    }
+
+    /// A fresh MCP manager for `config` (stdio servers run in the data dir; remote ones obey Offline mode).
+    pub fn mcp_manager(&self, config: crate::mcp::McpConfig) -> McpManager {
+        McpManager::new(config).with_workspace(self.paths.root.join("mcp")).with_offline(self.offline.clone())
+    }
+
+    /// Whether Offline mode is on: only local models and this network, no relay, no Telegram.
+    pub fn is_offline(&self) -> bool {
+        self.offline.load(std::sync::atomic::Ordering::Relaxed)
+    }
+
+    /// Whether Offline mode comes from `--offline` / `ROOFTOP_OFFLINE` (Settings can't turn it off).
+    pub fn offline_forced(&self) -> bool {
+        self.offline_forced.load(std::sync::atomic::Ordering::Relaxed)
+    }
+
+    /// Turns Offline mode on regardless of Settings (`--offline`).
+    pub fn force_offline(&self) {
+        self.offline_forced.store(true, std::sync::atomic::Ordering::Relaxed);
+        self.offline.store(true, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    /// Applies the saved setting (and the forced switch) to the effective state.
+    pub fn set_offline_setting(&self, on: bool) {
+        self.offline.store(on || self.offline_forced(), std::sync::atomic::Ordering::Relaxed);
     }
 
     pub async fn llm_config(&self) -> LlmConfig {

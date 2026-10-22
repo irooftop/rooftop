@@ -51,6 +51,10 @@ struct ServeArgs {
     /// Telegram Bot API base URL (e.g. a self-hosted Bot API server).
     #[arg(long, env = "TELEGRAM_API_URL", default_value = "https://api.telegram.org")]
     telegram_api: String,
+    /// Offline mode: only local models (Ollama, LM Studio, …) and this network. Refuses
+    /// remote LLM and MCP endpoints, turns off internet sharing (<name>.iroof.top) and the Telegram bot.
+    #[arg(long, env = "ROOFTOP_OFFLINE", action = clap::ArgAction::SetTrue)]
+    offline: bool,
     /// Run a relay hub for this domain (e.g. iroof.top): iRoof.top apps publish their
     /// share links at https://<name>.<domain>. Needs a wildcard DNS record and certificate.
     #[arg(long, env = "ROOFTOP_RELAY_DOMAIN")]
@@ -85,15 +89,6 @@ enum Command {
     },
 }
 
-fn env_llm() -> LlmConfig {
-    LlmConfig {
-        base_url: std::env::var("OPENAI_BASE_URL").unwrap_or_else(|_| "https://openrouter.ai/api/v1".into()),
-        api_key: std::env::var("OPENAI_API_KEY").unwrap_or_default(),
-        model: std::env::var("OPENAI_MODEL").unwrap_or_else(|_| "openai/gpt-6-luna".into()),
-        temperature: std::env::var("OPENAI_TEMPERATURE").ok().and_then(|t| t.parse().ok()),
-    }
-}
-
 fn default_persona(e: &rooftop::model::ChatExport) -> Option<String> {
     e.participants
         .iter()
@@ -123,7 +118,8 @@ async fn main() -> Result<()> {
             let chat =
                 server::make_chat(&rec, &persona, user.as_deref(), None, "").map_err(|_| anyhow::anyhow!("invalid --persona/--user"))?;
             let p = prompt::build(&rec.export, &chat, &PromptOptions { budget_chars: budget, ..Default::default() });
-            let out = serde_json::json!({"model": env_llm().model, "messages": p.messages, "tools": rooftop::tools::definitions()});
+            let out =
+                serde_json::json!({"model": LlmConfig::from_env().model, "messages": p.messages, "tools": rooftop::tools::definitions()});
             println!("{}", serde_json::to_string_pretty(&out)?);
             Ok(())
         }
@@ -135,7 +131,13 @@ async fn main() -> Result<()> {
 async fn serve(args: ServeArgs) -> Result<()> {
     let paths = Paths::new(args.data.clone());
     let db = paths.load().with_context(|| format!("loading data dir {}", args.data.display()))?;
-    let state = AppState::new(paths, db, env_llm());
+    let state = AppState::new(paths, db, LlmConfig::from_env());
+    if args.offline {
+        state.force_offline();
+    }
+    if state.is_offline() {
+        tracing::info!("Offline mode: only local models, no internet sharing, no Telegram");
+    }
     let env_token = args.telegram_token.as_deref().map(str::trim).filter(|t| !t.is_empty());
     if let Some(token) = env_token {
         let cfg = rooftop::tgbot::BotConfig {
@@ -147,6 +149,9 @@ async fn serve(args: ServeArgs) -> Result<()> {
         rooftop::tgbot::set_env_bot(&state, cfg)?;
     }
     let relay_hub = match args.relay_domain.as_deref().map(str::trim).filter(|d| !d.is_empty()) {
+        Some(_) if state.is_offline() => {
+            anyhow::bail!("--offline can't be combined with --relay-domain (a relay hub is an internet service)")
+        }
         Some(domain) => {
             let bot_token = args.relay_bot_token.as_deref().map(str::trim).filter(|t| !t.is_empty());
             if bot_token.is_some() && bot_token == env_token {
