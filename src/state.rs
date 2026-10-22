@@ -17,6 +17,8 @@ pub struct AppState {
     gen_locks: std::sync::Mutex<HashMap<String, Arc<Mutex<()>>>>,
     /// Serializes imports (they are disk heavy).
     pub import_lock: Mutex<()>,
+    /// Imports started by uploads, for progress polling.
+    pub imports: crate::imports::Jobs,
     /// PIN brute-force protection and guest rate limits.
     pub limiter: std::sync::Mutex<crate::share::Limiter>,
     /// Telegram relay for share links, while a bot is configured.
@@ -48,6 +50,7 @@ impl AppState {
             mcp: Mutex::new(mcp),
             gen_locks: Default::default(),
             import_lock: Mutex::new(()),
+            imports: Default::default(),
             limiter: Default::default(),
             telegram: Default::default(),
             telegram_env: Default::default(),

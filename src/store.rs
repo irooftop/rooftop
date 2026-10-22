@@ -2,7 +2,8 @@
 //!
 //! ```text
 //! data/settings.json
-//! data/exports/<id>/export.json   parsed export + media library
+//! data/exports/<id>/export.json   parsed export + media library (written once, at import)
+//! data/exports/<id>/descriptions.json   media descriptions, small and rewritten on every edit
 //! data/exports/<id>/files/…       referenced media (original relative paths)
 //! data/chats/<id>.json            chat metadata + live events
 //! data/shares/<id>.json           share links + visitor sessions
@@ -16,6 +17,7 @@ use crate::share::Share;
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
+use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -105,20 +107,34 @@ pub struct Db {
     pub settings: Settings,
 }
 
+#[derive(Clone)]
 pub struct Paths {
     pub root: PathBuf,
 }
 
+/// Serializes straight into a temporary file and renames it over `path`,
+/// so a crash never leaves a half-written file and big values are never buffered in memory.
 fn write_json_atomic(path: &Path, value: &impl Serialize, pretty: bool) -> Result<()> {
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)?;
     }
     let tmp = path.with_extension(format!("tmp-{}", uuid::Uuid::new_v4().simple()));
-    let bytes = if pretty { serde_json::to_vec_pretty(value)? } else { serde_json::to_vec(value)? };
-    std::fs::write(&tmp, bytes).with_context(|| format!("writing {}", tmp.display()))?;
+    let write = || -> Result<()> {
+        let mut w = std::io::BufWriter::with_capacity(1 << 20, std::fs::File::create(&tmp)?);
+        if pretty { serde_json::to_writer_pretty(&mut w, value)? } else { serde_json::to_writer(&mut w, value)? }
+        w.flush()?;
+        Ok(())
+    };
+    if let Err(e) = write() {
+        let _ = std::fs::remove_file(&tmp);
+        return Err(e.context(format!("writing {}", tmp.display())));
+    }
     std::fs::rename(&tmp, path).with_context(|| format!("replacing {}", path.display()))?;
     Ok(())
 }
+
+/// Library descriptions by item id.
+pub type Descriptions = BTreeMap<String, String>;
 
 impl Paths {
     pub fn new(root: PathBuf) -> Self {
@@ -132,6 +148,9 @@ impl Paths {
     }
     pub fn export_files(&self, id: &str) -> PathBuf {
         self.export_dir(id).join("files")
+    }
+    fn descriptions(&self, id: &str) -> PathBuf {
+        self.export_dir(id).join("descriptions.json")
     }
     pub fn chat(&self, id: &str) -> PathBuf {
         self.root.join("chats").join(format!("{id}.json"))
@@ -154,7 +173,7 @@ impl Paths {
         }
         for e in std::fs::read_dir(self.root.join("exports"))?.flatten() {
             let p = e.path().join("export.json");
-            match std::fs::read(&p).map_err(anyhow::Error::from).and_then(|b| Ok(serde_json::from_slice::<ExportRecord>(&b)?)) {
+            match self.read_export(&p) {
                 Ok(rec) => {
                     db.exports.insert(rec.id.clone(), Arc::new(rec));
                 }
@@ -188,11 +207,27 @@ impl Paths {
         Ok(db)
     }
 
+    /// Reads an export and applies the descriptions saved next to it, if any.
+    fn read_export(&self, path: &Path) -> Result<ExportRecord> {
+        let mut rec: ExportRecord = serde_json::from_slice(&std::fs::read(path)?)?;
+        if let Ok(bytes) = std::fs::read(self.descriptions(&rec.id)) {
+            let saved: Descriptions = serde_json::from_slice(&bytes).context("parsing descriptions.json")?;
+            for item in rec.export.library.iter_mut() {
+                item.description = saved.get(&item.id).cloned();
+            }
+        }
+        Ok(rec)
+    }
+
     pub fn save_settings(&self, s: &Settings) -> Result<()> {
         write_json_atomic(&self.settings(), s, true)
     }
     pub fn save_export(&self, rec: &ExportRecord) -> Result<()> {
         write_json_atomic(&self.export_dir(&rec.id).join("export.json"), rec, false)
+    }
+    /// Saves all descriptions of an export (the complete set replaces the previous one).
+    pub fn save_descriptions(&self, id: &str, descriptions: &Descriptions) -> Result<()> {
+        write_json_atomic(&self.descriptions(id), descriptions, false)
     }
     pub fn save_chat(&self, chat: &Chat) -> Result<()> {
         write_json_atomic(&self.chat(&chat.id), chat, false)

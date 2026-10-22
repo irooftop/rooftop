@@ -1,13 +1,71 @@
 //! Turns a Telegram or WhatsApp export into a [`ChatExport`] with a deduplicated
-//! media library, optionally copying referenced media into the data store.
+//! media library and puts the referenced media files into the data store.
+//!
+//! An import is a pipeline of separately callable steps, so the caller can look
+//! at the result between them (the server dedupes by [`fingerprint`] before any
+//! media is hashed or moved):
+//!
+//! 1. [`parse`] reads the messages,
+//! 2. [`Staged::link_media`] builds the library (hashing the media files),
+//! 3. [`place_media`] copies or moves the referenced files.
+//!
+//! The steps report their [`Progress`] and never touch the network.
 
 use crate::model::{ChatExport, LibraryItem, MediaKind, Participant};
 use crate::{telegram, telegram_json, whatsapp};
 use anyhow::{Context, Result};
+use serde::Serialize;
 use sha2::{Digest, Sha256};
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::io::Read;
 use std::path::{Component, Path, PathBuf};
+use std::sync::atomic::{AtomicUsize, Ordering};
+
+/// Import stages in the order they run.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Stage {
+    Unpacking,
+    Reading,
+    Parsing,
+    Hashing,
+    Placing,
+    Saving,
+}
+
+/// Where an import is: `done` of `total` units of the stage's work (pages,
+/// files). `messages` counts the messages found so far while parsing, else 0.
+#[derive(Debug, Clone, Copy)]
+pub struct Progress {
+    pub stage: Stage,
+    pub done: usize,
+    pub total: usize,
+    pub messages: usize,
+}
+
+/// Receives progress from any worker thread.
+pub type Report<'a> = &'a (dyn Fn(Progress) + Sync);
+
+/// Maps `items` on all cores and returns the results in item order.
+pub fn par_map<T: Sync, R: Send>(items: &[T], f: impl Fn(&T) -> R + Sync) -> Vec<R> {
+    let workers = std::thread::available_parallelism().map_or(1, usize::from).min(items.len()).max(1);
+    let next = AtomicUsize::new(0);
+    let worker = || {
+        let mut out = Vec::new();
+        loop {
+            let i = next.fetch_add(1, Ordering::Relaxed);
+            let Some(item) = items.get(i) else { break };
+            out.push((i, f(item)));
+        }
+        out
+    };
+    let mut done: Vec<(usize, R)> = std::thread::scope(|s| {
+        let handles: Vec<_> = (0..workers).map(|_| s.spawn(worker)).collect();
+        handles.into_iter().flat_map(|h| h.join().expect("import worker panicked")).collect()
+    });
+    done.sort_unstable_by_key(|(i, _)| *i);
+    done.into_iter().map(|(_, r)| r).collect()
+}
 
 /// Rejects absolute paths and `..`, returns a normalized relative path.
 pub fn safe_rel(rel: &str) -> Option<PathBuf> {
@@ -26,7 +84,7 @@ pub fn safe_rel(rel: &str) -> Option<PathBuf> {
 fn hash_file(path: &Path) -> Result<String> {
     let mut f = std::fs::File::open(path)?;
     let mut h = Sha256::new();
-    let mut buf = vec![0u8; 64 * 1024];
+    let mut buf = vec![0u8; 256 * 1024];
     loop {
         let n = f.read(&mut buf)?;
         if n == 0 {
@@ -94,120 +152,211 @@ pub fn find_export_root(dir: &Path) -> Option<PathBuf> {
     detect_export(dir).map(|(root, _)| root)
 }
 
+/// How [`place_media`] puts files into the store.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Placement {
+    /// The source stays as it is (a folder the user owns).
+    Copy,
+    /// The source is ours to consume (an upload): renamed, copied across file systems.
+    Move,
+}
+
+/// Messages and participants of an export, whose media are not looked at yet.
+pub struct Staged {
+    /// Directory the media paths in the messages are relative to.
+    pub root: PathBuf,
+    pub export: ChatExport,
+    /// (sender name, avatar path relative to the root)
+    avatars: Vec<(String, String)>,
+}
+
+/// Parses the export at `src` (a directory or a WhatsApp `.txt` file).
+pub fn parse(src: &Path, report: Report) -> Result<Staged> {
+    let (root, kind) = detect_export(src)
+        .context("no supported chat export found (expected Telegram messages.html, Telegram result.json or a WhatsApp chat .txt)")?;
+    let parsed = match kind {
+        ExportKind::TelegramHtml => telegram::parse_export_dir(&root, report)?,
+        ExportKind::TelegramJson => telegram_json::parse_export_dir(&root, report)?,
+        ExportKind::WhatsApp(txt) => whatsapp::parse_file(&txt)?,
+    };
+    let participants = participants(&parsed.messages);
+    let title = match parsed.title {
+        t if !t.is_empty() => t,
+        _ => participants.first().map_or_else(|| "Chat".into(), |p| p.name.clone()),
+    };
+    let export = ChatExport { title, participants, messages: parsed.messages, library: Vec::new() };
+    Ok(Staged { root, export, avatars: parsed.avatars })
+}
+
+/// Senders in order of first appearance with their message counts.
+fn participants(messages: &[crate::model::Message]) -> Vec<Participant> {
+    let mut index: HashMap<&str, usize> = HashMap::new();
+    let mut list: Vec<Participant> = Vec::new();
+    for m in messages.iter().filter(|m| !m.service && !m.from.is_empty()) {
+        match index.get(m.from.as_str()) {
+            Some(&i) => list[i].messages += 1,
+            None => {
+                index.insert(&m.from, list.len());
+                list.push(Participant { name: m.from.clone(), avatar: None, messages: 1 });
+            }
+        }
+    }
+    list
+}
+
+/// Identifies the content of an export, to skip importing it twice.
+pub fn fingerprint(e: &ChatExport) -> String {
+    let mut h = Sha256::new();
+    h.update(e.title.as_bytes());
+    for m in &e.messages {
+        h.update(m.id.to_le_bytes());
+        h.update(m.date.as_deref().unwrap_or_default().as_bytes());
+        h.update(m.text.as_bytes());
+    }
+    hex::encode(h.finalize())[..24].to_string()
+}
+
+/// A media message that goes into the library, with the file it points to.
+struct Linked {
+    index: usize,
+    rel: String,
+    path: Option<PathBuf>,
+}
+
+impl Staged {
+    /// Builds the media library (identical files share one item) and keeps only
+    /// references to files that exist. Returns the files to [`place_media`], sorted.
+    pub fn link_media(&mut self, report: Report) -> Result<Vec<String>> {
+        let root = self.root.as_path();
+        let mut to_place: Vec<String> = Vec::new();
+        let avatars: HashMap<&str, &str> = self.avatars.iter().map(|(n, a)| (n.as_str(), a.as_str())).collect();
+        for p in self.export.participants.iter_mut() {
+            p.avatar = avatars.get(p.name.as_str()).filter(|a| existing(root, a).is_some()).map(|a| a.to_string());
+            to_place.extend(p.avatar.clone());
+        }
+        for msg in self.export.messages.iter_mut() {
+            if let Some(lp) = msg.link_preview.as_mut() {
+                lp.photo = lp.photo.take().filter(|p| existing(root, p).is_some());
+                to_place.extend(lp.photo.clone());
+            }
+        }
+        let linked = self.linked(root);
+        let digests = hash_files(&linked, report)?;
+        let mut library: BTreeMap<String, LibraryItem> = BTreeMap::new();
+        for Linked { index, rel, path } in linked {
+            let msg = &mut self.export.messages[index];
+            let media = msg.media.as_mut().expect("linked messages have media");
+            let kind = media.kind();
+            let digest = match &path {
+                Some(p) => digests[p].clone(),
+                None => hex::encode(Sha256::digest(rel.as_bytes())),
+            };
+            let id = format!("{}_{}", kind.id_prefix(), &digest[..10]);
+            let thumb = media.thumb.clone().filter(|t| existing(root, t).is_some()).or_else(|| {
+                let t = format!("thumbs/thumb_{}_0.jpg", msg.id);
+                existing(root, &t).map(|_| t)
+            });
+            media.thumb = thumb.clone();
+            media.library_id = Some(id.clone());
+            if path.is_some() {
+                to_place.push(rel.clone());
+            }
+            to_place.extend(thumb.clone());
+            let item = library.entry(id.clone()).or_insert_with(|| LibraryItem {
+                id,
+                kind,
+                file: Some(rel.clone()),
+                thumb: thumb.clone(),
+                title: media.title.clone().filter(|t| t != "GIF"),
+                available: path.is_some(),
+                description: None,
+                uses: Vec::new(),
+                senders: BTreeMap::new(),
+            });
+            if item.thumb.is_none() {
+                item.thumb = thumb;
+            }
+            item.uses.push(msg.id);
+            *item.senders.entry(msg.from.clone()).or_default() += 1;
+        }
+        self.export.library = library.into_values().collect();
+        self.export.library.sort_by(|a, b| b.uses.len().cmp(&a.uses.len()).then(a.id.cmp(&b.id)));
+        to_place.sort();
+        to_place.dedup();
+        Ok(to_place)
+    }
+
+    /// Media messages that belong into the library (the rest are cards: location, poll, …).
+    fn linked(&self, root: &Path) -> Vec<Linked> {
+        let in_library = |k: MediaKind| k.is_resendable() || matches!(k, MediaKind::Sticker | MediaKind::Gif);
+        self.export
+            .messages
+            .iter()
+            .enumerate()
+            .filter_map(|(index, m)| {
+                let media = m.media.as_ref().filter(|x| in_library(x.kind()))?;
+                let rel = media.file.clone()?;
+                let path = existing(root, &rel);
+                Some(Linked { index, rel, path })
+            })
+            .collect()
+    }
+}
+
+/// SHA-256 of every distinct existing file, hashed on all cores.
+fn hash_files(linked: &[Linked], report: Report) -> Result<HashMap<PathBuf, String>> {
+    let mut seen = HashSet::new();
+    let paths: Vec<&PathBuf> = linked.iter().filter_map(|l| l.path.as_ref()).filter(|p| seen.insert(*p)).collect();
+    let done = AtomicUsize::new(0);
+    let hashed = par_map(&paths, |p| {
+        let digest = hash_file(p).with_context(|| format!("hashing {}", p.display()));
+        let done = done.fetch_add(1, Ordering::Relaxed) + 1;
+        if done % 16 == 0 || done == paths.len() {
+            report(Progress { stage: Stage::Hashing, done, total: paths.len(), messages: 0 });
+        }
+        digest
+    });
+    paths.into_iter().zip(hashed).map(|(p, d)| Ok((p.clone(), d?))).collect()
+}
+
+/// Puts `rels` (paths relative to `root`, see [`Staged::link_media`]) into `dest`
+/// under the same relative paths.
+pub fn place_media(root: &Path, dest: &Path, rels: &[String], how: Placement, report: Report) -> Result<()> {
+    let mut made: HashSet<PathBuf> = HashSet::new();
+    for (i, rel) in rels.iter().enumerate() {
+        let (Some(from), Some(safe)) = (existing(root, rel), safe_rel(rel)) else { continue };
+        let to = dest.join(safe);
+        if let Some(parent) = to.parent().filter(|p| !made.contains(*p)) {
+            std::fs::create_dir_all(parent).with_context(|| format!("creating {}", parent.display()))?;
+            made.insert(parent.to_path_buf());
+        }
+        match how {
+            Placement::Copy => copy(&from, &to)?,
+            // Renaming fails across file systems (a data directory on another disk): copy then.
+            Placement::Move => std::fs::rename(&from, &to).or_else(|_| copy(&from, &to).and_then(|()| Ok(std::fs::remove_file(&from)?)))?,
+        }
+        if (i + 1) % 64 == 0 || i + 1 == rels.len() {
+            report(Progress { stage: Stage::Placing, done: i + 1, total: rels.len(), messages: 0 });
+        }
+    }
+    Ok(())
+}
+
+fn copy(from: &Path, to: &Path) -> Result<()> {
+    std::fs::copy(from, to).with_context(|| format!("copying {}", from.display()))?;
+    Ok(())
+}
+
 /// Parses `src` (an export directory or a WhatsApp `.txt` file) and, when `dest`
 /// is given, copies every referenced media file (preserving relative paths) into it.
 pub fn import_dir(src: &Path, dest: Option<&Path>) -> Result<ChatExport> {
-    let (src, kind) = detect_export(src).with_context(|| {
-        format!(
-            "no supported chat export found in {} (expected Telegram messages.html, Telegram result.json or a WhatsApp chat .txt)",
-            src.display()
-        )
-    })?;
-    let src = src.as_path();
-    let parsed = match kind {
-        ExportKind::TelegramHtml => telegram::parse_export_dir(src)?,
-        ExportKind::TelegramJson => telegram_json::parse_export_dir(src)?,
-        ExportKind::WhatsApp(txt) => whatsapp::parse_file(&txt)?,
-    };
-    let mut export = ChatExport { title: parsed.title.clone(), messages: parsed.messages, ..Default::default() };
-
-    let mut counts: Vec<(String, u32)> = Vec::new();
-    for m in export.messages.iter().filter(|m| !m.service && !m.from.is_empty()) {
-        match counts.iter_mut().find(|(n, _)| n == &m.from) {
-            Some((_, c)) => *c += 1,
-            None => counts.push((m.from.clone(), 1)),
-        }
-    }
-    let mut to_copy: Vec<String> = Vec::new();
-    export.participants = counts
-        .into_iter()
-        .map(|(name, messages)| {
-            let avatar = parsed.avatars.iter().find(|(n, _)| n == &name).map(|(_, a)| a.clone()).filter(|a| existing(src, a).is_some());
-            if let Some(a) = &avatar {
-                to_copy.push(a.clone());
-            }
-            Participant { name, avatar, messages }
-        })
-        .collect();
-    if export.title.is_empty() {
-        export.title = export.participants.first().map(|p| p.name.clone()).unwrap_or_else(|| "Chat".into());
-    }
-
-    for msg in export.messages.iter_mut() {
-        if let Some(lp) = msg.link_preview.as_mut() {
-            lp.photo = lp.photo.take().filter(|p| existing(src, p).is_some());
-            if let Some(p) = &lp.photo {
-                to_copy.push(p.clone());
-            }
-        }
-    }
-    let mut library: BTreeMap<String, LibraryItem> = BTreeMap::new();
-    let mut hash_cache: HashMap<PathBuf, String> = HashMap::new();
-    for msg in export.messages.iter_mut() {
-        let Some(media) = msg.media.as_mut() else { continue };
-        let kind = media.kind();
-        if !(kind.is_resendable() || matches!(kind, MediaKind::Sticker | MediaKind::Gif)) {
-            continue;
-        }
-        let Some(rel) = media.file.clone() else { continue };
-        let path = existing(src, &rel);
-        let digest = match &path {
-            Some(p) => match hash_cache.get(p) {
-                Some(h) => h.clone(),
-                None => {
-                    let h = hash_file(p).with_context(|| format!("hashing {}", p.display()))?;
-                    hash_cache.insert(p.clone(), h.clone());
-                    h
-                }
-            },
-            None => hex::encode(Sha256::digest(rel.as_bytes())),
-        };
-        let id = format!("{}_{}", kind.id_prefix(), &digest[..10]);
-        let thumb = media.thumb.clone().filter(|t| existing(src, t).is_some()).or_else(|| {
-            let t = format!("thumbs/thumb_{}_0.jpg", msg.id);
-            existing(src, &t).map(|_| t)
-        });
-        media.thumb = thumb.clone();
-        media.library_id = Some(id.clone());
-        if path.is_some() {
-            to_copy.push(rel.clone());
-        }
-        if let Some(t) = &thumb {
-            to_copy.push(t.clone());
-        }
-        let item = library.entry(id.clone()).or_insert_with(|| LibraryItem {
-            id,
-            kind,
-            file: Some(rel.clone()),
-            thumb: thumb.clone(),
-            title: media.title.clone().filter(|t| t != "GIF"),
-            available: path.is_some(),
-            description: None,
-            uses: Vec::new(),
-            senders: BTreeMap::new(),
-        });
-        if item.thumb.is_none() {
-            item.thumb = thumb;
-        }
-        item.uses.push(msg.id);
-        *item.senders.entry(msg.from.clone()).or_default() += 1;
-    }
-    export.library = library.into_values().collect();
-    export.library.sort_by(|a, b| b.uses.len().cmp(&a.uses.len()).then(a.id.cmp(&b.id)));
-
+    let quiet = |_: Progress| {};
+    let mut staged = parse(src, &quiet)?;
+    let rels = staged.link_media(&quiet)?;
     if let Some(dest) = dest {
-        to_copy.sort();
-        to_copy.dedup();
-        for rel in to_copy {
-            let (Some(from), Some(safe)) = (existing(src, &rel), safe_rel(&rel)) else { continue };
-            let to = dest.join(safe);
-            if let Some(parent) = to.parent() {
-                std::fs::create_dir_all(parent)?;
-            }
-            std::fs::copy(&from, &to).with_context(|| format!("copying {}", from.display()))?;
-        }
+        place_media(&staged.root, dest, &rels, Placement::Copy, &quiet)?;
     }
-    Ok(export)
+    Ok(staged.export)
 }
 
 #[cfg(test)]
@@ -219,5 +368,13 @@ mod tests {
         assert!(safe_rel("../etc/passwd").is_none());
         assert!(safe_rel("/etc/passwd").is_none());
         assert_eq!(safe_rel("./a/b.jpg"), Some(PathBuf::from("a/b.jpg")));
+    }
+
+    #[test]
+    fn par_map_keeps_order() {
+        let items: Vec<u32> = (0..1000).collect();
+        let out = par_map(&items, |n| n * 2);
+        assert_eq!(out, items.iter().map(|n| n * 2).collect::<Vec<_>>());
+        assert!(par_map(&Vec::<u32>::new(), |n| *n).is_empty());
     }
 }

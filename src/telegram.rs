@@ -1,11 +1,19 @@
 //! Parser for Telegram Desktop "Export chat history" HTML output
 //! (`messages.html`, `messages2.html`, …).
+//!
+//! Pages are parsed independently and in parallel. What depends on the pages
+//! before (the sender of a "joined" message, ids of messages without one, the
+//! first avatar of each sender) is resolved afterwards in a single ordered pass.
 
+use crate::import::{Progress, Report, Stage, par_map};
 use crate::model::{LinkPreview, Media, MediaKind, Message, Reaction};
 use anyhow::{Context, Result, bail};
 use chrono::NaiveDateTime;
 use scraper::{ElementRef, Html, Node, Selector};
+use std::collections::HashSet;
 use std::path::{Path, PathBuf};
+use std::sync::LazyLock;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 #[derive(Debug, Default)]
 pub struct ParsedHtml {
@@ -14,6 +22,54 @@ pub struct ParsedHtml {
     /// (sender name, avatar path relative to export root)
     pub avatars: Vec<(String, String)>,
 }
+
+/// Selectors are parsed once: building one per element dominated the parse time.
+struct Selectors {
+    title_name: Selector,
+    title_bold: Selector,
+    title_tag: Selector,
+    messages: Selector,
+    body: Selector,
+    userpic: Selector,
+    link: Selector,
+    quote: Selector,
+    reaction: Selector,
+    emoji: Selector,
+    img: Selector,
+    count: Selector,
+    titled: Selector,
+    title: Selector,
+    status: Selector,
+    site: Selector,
+    web_title: Selector,
+    web_description: Selector,
+}
+
+static SEL: LazyLock<Selectors> = LazyLock::new(|| {
+    let s = |css: &str| Selector::parse(css).expect("static selector");
+    Selectors {
+        // macOS and Linux use `.name`, older Windows builds `.content .text.bold`,
+        // and the generic `<title>` ("Exported Data") never names the chat.
+        title_name: s(".page_header .name"),
+        title_bold: s(".page_header .content .text.bold"),
+        title_tag: s("title"),
+        messages: s(".history > .message"),
+        body: s(".body"),
+        userpic: s(".userpic_wrap img.userpic"),
+        link: s("a"),
+        quote: s(".quote, blockquote"),
+        reaction: s(".reaction"),
+        emoji: s(".emoji"),
+        img: s("img"),
+        count: s(".count"),
+        titled: s("[title]"),
+        title: s(".title"),
+        status: s(".status, .video_duration"),
+        site: s(".webpage_site"),
+        web_title: s(".webpage_title"),
+        web_description: s(".webpage_description"),
+    }
+});
 
 /// Returns `messages.html`, `messages2.html`, … in page order.
 pub fn message_pages(dir: &Path) -> Result<Vec<PathBuf>> {
@@ -34,25 +90,24 @@ pub fn message_pages(dir: &Path) -> Result<Vec<PathBuf>> {
     Ok(pages.into_iter().map(|(_, p)| p).collect())
 }
 
-pub fn parse_export_dir(dir: &Path) -> Result<ParsedHtml> {
-    let mut out = ParsedHtml::default();
-    let mut last_sender = String::new();
-    let mut synthetic_id = -1i64;
-    for page in message_pages(dir)? {
-        let html = std::fs::read_to_string(&page).with_context(|| format!("reading {}", page.display()))?;
-        parse_page(&html, &mut out, &mut last_sender, &mut synthetic_id);
-    }
-    Ok(out)
+/// Parses every page of the export in `dir`, reporting after each finished page.
+pub fn parse_export_dir(dir: &Path, report: Report) -> Result<ParsedHtml> {
+    let paths = message_pages(dir)?;
+    let (done, found) = (AtomicUsize::new(0), AtomicUsize::new(0));
+    let pages = par_map(&paths, |path| -> Result<Page> {
+        let html = std::fs::read_to_string(path).with_context(|| format!("reading {}", path.display()))?;
+        let page = parse_page(&html);
+        let messages = found.fetch_add(page.messages.len(), Ordering::Relaxed) + page.messages.len();
+        let done = done.fetch_add(1, Ordering::Relaxed) + 1;
+        report(Progress { stage: Stage::Parsing, done, total: paths.len(), messages });
+        Ok(page)
+    });
+    Ok(merge(pages.into_iter().collect::<Result<Vec<_>>>()?))
 }
 
+/// Parses a single page (tests and small inputs).
 pub fn parse_html(html: &str) -> ParsedHtml {
-    let mut out = ParsedHtml::default();
-    parse_page(html, &mut out, &mut String::new(), &mut -1);
-    out
-}
-
-fn sel(s: &str) -> Selector {
-    Selector::parse(s).expect("static selector")
+    merge(vec![parse_page(html)])
 }
 
 fn has_class(el: &ElementRef, class: &str) -> bool {
@@ -63,56 +118,97 @@ fn child_elements<'a>(el: &ElementRef<'a>) -> impl Iterator<Item = ElementRef<'a
     el.children().filter_map(ElementRef::wrap)
 }
 
-fn first_desc<'a>(el: &ElementRef<'a>, selector: &str) -> Option<ElementRef<'a>> {
-    el.select(&sel(selector)).next()
+fn first_desc<'a>(el: &ElementRef<'a>, selector: &Selector) -> Option<ElementRef<'a>> {
+    el.select(selector).next()
 }
 
 fn plain(el: &ElementRef) -> String {
     el.text().collect::<String>().split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
-fn parse_page(html: &str, out: &mut ParsedHtml, last_sender: &mut String, synthetic_id: &mut i64) {
+/// A message of one page, before the cross-page fix-ups of [`merge`].
+struct PageMessage {
+    msg: Message,
+    avatar: Option<String>,
+    /// 1-based position among the page's elements without a usable id.
+    synthetic: Option<usize>,
+}
+
+struct Page {
+    title: String,
+    messages: Vec<PageMessage>,
+    /// Elements without a usable id, kept or not: later pages continue the numbering after them.
+    synthetic: usize,
+}
+
+fn parse_page(html: &str) -> Page {
     let doc = Html::parse_document(html);
-    if out.title.is_empty() {
-        // macOS and Linux use `.name`, older Windows builds `.content .text.bold`,
-        // and the generic `<title>` ("Exported Data") never names the chat.
-        out.title = [".page_header .name", ".page_header .content .text.bold", "title"]
-            .iter()
-            .filter_map(|s| doc.select(&sel(s)).next().map(|t| plain(&t)))
-            .find(|t| !t.is_empty() && !t.eq_ignore_ascii_case("Exported Data"))
-            .unwrap_or_default();
-    }
-    for el in doc.select(&sel(".history > .message")) {
-        let id = el.value().id().and_then(|s| s.strip_prefix("message")).and_then(|s| s.parse::<i64>().ok()).unwrap_or_else(|| {
-            *synthetic_id -= 1;
-            *synthetic_id
+    let title = [&SEL.title_name, &SEL.title_bold, &SEL.title_tag]
+        .iter()
+        .filter_map(|s| doc.select(s).next().map(|t| plain(&t)))
+        .find(|t| !t.is_empty() && !t.eq_ignore_ascii_case("Exported Data"))
+        .unwrap_or_default();
+    let mut page = Page { title, messages: Vec::new(), synthetic: 0 };
+    for el in doc.select(&SEL.messages) {
+        let parsed_id = el.value().id().and_then(|s| s.strip_prefix("message")).and_then(|s| s.parse::<i64>().ok());
+        let synthetic = parsed_id.is_none().then(|| {
+            page.synthetic += 1;
+            page.synthetic
         });
+        let mut msg = Message { id: parsed_id.unwrap_or_default(), ..Default::default() };
         if has_class(&el, "service") {
-            let text = first_desc(&el, ".body").map(|b| plain(&b)).unwrap_or_default();
+            msg.text = first_desc(&el, &SEL.body).map(|b| plain(&b)).unwrap_or_default();
             // Day separators carry no information beyond message timestamps.
-            if text.is_empty() || parse_day(&text).is_some() {
+            if msg.text.is_empty() || parse_day(&msg.text).is_some() {
                 continue;
             }
-            out.messages.push(Message { id, service: true, text, ..Default::default() });
+            msg.service = true;
+            page.messages.push(PageMessage { msg, avatar: None, synthetic });
             continue;
         }
         let Some(body) = child_elements(&el).find(|c| has_class(c, "body")) else {
             continue;
         };
-        let mut msg = Message { id, ..Default::default() };
         parse_body(&body, &mut msg, true);
-        if msg.from.is_empty() {
-            msg.from = last_sender.clone();
-        } else {
-            *last_sender = msg.from.clone();
-        }
-        if let Some(src) = first_desc(&el, ".userpic_wrap img.userpic").and_then(|i| i.attr("src").map(String::from))
-            && !out.avatars.iter().any(|(n, _)| n == &msg.from)
-        {
-            out.avatars.push((msg.from.clone(), src));
-        }
-        out.messages.push(msg);
+        let avatar = first_desc(&el, &SEL.userpic).and_then(|i| i.attr("src").map(String::from));
+        page.messages.push(PageMessage { msg, avatar, synthetic });
     }
+    page
+}
+
+/// Joins the pages in order and resolves what depends on earlier messages: a joined
+/// message has no `from_name` and inherits the previous sender (also across pages),
+/// ids missing from the markup count down from -2, and each sender keeps the first avatar seen.
+fn merge(pages: Vec<Page>) -> ParsedHtml {
+    let mut out = ParsedHtml { messages: Vec::with_capacity(pages.iter().map(|p| p.messages.len()).sum()), ..Default::default() };
+    let mut last_sender = String::new();
+    let mut synthetic_before = 0usize;
+    let mut with_avatar: HashSet<String> = HashSet::new();
+    for page in pages {
+        if out.title.is_empty() {
+            out.title = page.title;
+        }
+        for PageMessage { mut msg, avatar, synthetic } in page.messages {
+            if let Some(k) = synthetic {
+                msg.id = -((synthetic_before + k + 1) as i64);
+            }
+            if !msg.service {
+                if msg.from.is_empty() {
+                    msg.from = last_sender.clone();
+                } else {
+                    last_sender = msg.from.clone();
+                }
+                if let Some(src) = avatar
+                    && with_avatar.insert(msg.from.clone())
+                {
+                    out.avatars.push((msg.from.clone(), src));
+                }
+            }
+            out.messages.push(msg);
+        }
+        synthetic_before += page.synthetic;
+    }
+    out
 }
 
 /// `top` is false while parsing a nested `forwarded body`: there `from_name`
@@ -145,13 +241,13 @@ fn parse_body(body: &ElementRef, msg: &mut Message, top: bool) {
                 msg.forwarded_from = Some(name);
             }
         } else if has_class(&c, "reply_to") {
-            msg.reply_to = first_desc(&c, "a").and_then(|a| {
+            msg.reply_to = first_desc(&c, &SEL.link).and_then(|a| {
                 let target = a.attr("onclick").or(a.attr("href")).unwrap_or_default();
                 let digits: String =
                     target.rsplit(|ch: char| !ch.is_ascii_digit() && ch != '-').find(|s| !s.is_empty()).unwrap_or_default().to_string();
                 digits.parse().ok()
             });
-            if let Some(q) = first_desc(&c, ".quote, blockquote") {
+            if let Some(q) = first_desc(&c, &SEL.quote) {
                 msg.quote = Some(plain(&q)).filter(|s| !s.is_empty());
             }
         } else if has_class(&c, "forwarded_from") {
@@ -171,20 +267,20 @@ fn parse_body(body: &ElementRef, msg: &mut Message, top: bool) {
                 msg.text.push_str(&t);
             }
         } else if has_class(&c, "reactions") {
-            for r in c.select(&sel(".reaction")) {
-                let emoji = first_desc(&r, ".emoji")
+            for r in c.select(&SEL.reaction) {
+                let emoji = first_desc(&r, &SEL.emoji)
                     .map(|e| {
                         let t = plain(&e);
                         if t.is_empty() {
-                            first_desc(&e, "img").and_then(|i| i.attr("alt").map(String::from)).unwrap_or_default()
+                            first_desc(&e, &SEL.img).and_then(|i| i.attr("alt").map(String::from)).unwrap_or_default()
                         } else {
                             t
                         }
                     })
                     .unwrap_or_default();
-                let count = first_desc(&r, ".count").and_then(|e| plain(&e).parse().ok()).unwrap_or(1);
+                let count = first_desc(&r, &SEL.count).and_then(|e| plain(&e).parse().ok()).unwrap_or(1);
                 let from = r
-                    .select(&sel("[title]"))
+                    .select(&SEL.titled)
                     .filter_map(|e| e.attr("title").map(|s| s.trim().to_string()))
                     .filter(|s| !s.is_empty())
                     .collect();
@@ -204,16 +300,16 @@ fn parse_body(body: &ElementRef, msg: &mut Message, top: bool) {
 
 fn parse_media_el(el: &ElementRef, msg: &mut Message) {
     let href = el.attr("href").map(String::from);
-    let img_src = first_desc(el, "img").and_then(|i| i.attr("src").map(String::from));
-    let title = first_desc(el, ".title").map(|t| plain(&t)).filter(|s| !s.is_empty());
-    let status = first_desc(el, ".status, .video_duration").map(|t| plain(&t)).filter(|s| !s.is_empty());
+    let img_src = first_desc(el, &SEL.img).and_then(|i| i.attr("src").map(String::from));
+    let title = first_desc(el, &SEL.title).map(|t| plain(&t)).filter(|s| !s.is_empty());
+    let status = first_desc(el, &SEL.status).map(|t| plain(&t)).filter(|s| !s.is_empty());
     let kind = if has_class(el, "webpage_preview") {
         let url = href.clone().unwrap_or_default();
         msg.link_preview = Some(LinkPreview {
             url,
-            site: first_desc(el, ".webpage_site").map(|t| plain(&t)),
-            title: first_desc(el, ".webpage_title").map(|t| plain(&t)),
-            description: first_desc(el, ".webpage_description").map(|t| plain(&t)),
+            site: first_desc(el, &SEL.site).map(|t| plain(&t)),
+            title: first_desc(el, &SEL.web_title).map(|t| plain(&t)),
+            description: first_desc(el, &SEL.web_description).map(|t| plain(&t)),
             photo: img_src.filter(|s| !s.starts_with("http")),
         });
         return;

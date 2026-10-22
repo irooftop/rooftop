@@ -17,6 +17,7 @@ use crate::model::{Media, MediaKind, Message};
 use crate::telegram::ParsedHtml;
 use anyhow::{Context, Result};
 use chrono::{NaiveDate, NaiveDateTime, NaiveTime};
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 const MARKS: &[char] = &['\u{200e}', '\u{200f}', '\u{202a}', '\u{202b}', '\u{202c}', '\u{202d}', '\u{202e}', '\u{feff}'];
@@ -317,7 +318,9 @@ pub fn parse_text(text: &str, title_hint: &str, exists: &dyn Fn(&str) -> bool) -
     let other = if order == Order::DayFirst { Order::MonthFirst } else { Order::DayFirst };
 
     let mut out = ParsedHtml::default();
+    // Message counts per sender in order of first appearance.
     let mut counts: Vec<(String, usize)> = Vec::new();
+    let mut count_index: HashMap<String, usize> = HashMap::new();
     for raw in &raws {
         let h = &raw.header;
         let date = h.datetime(order).or_else(|| h.datetime(other)).map(|d| d.format("%Y-%m-%dT%H:%M:%S").to_string());
@@ -334,9 +337,12 @@ pub fn parse_text(text: &str, title_hint: &str, exists: &dyn Fn(&str) -> bool) -
             }
             (Item::Msg { text, edited, media }, Some((name, _))) => {
                 let from = sender_name(name);
-                match counts.iter_mut().find(|(n, _)| *n == from) {
-                    Some((_, c)) => *c += 1,
-                    None => counts.push((from.clone(), 1)),
+                match count_index.get(&from) {
+                    Some(&i) => counts[i].1 += 1,
+                    None => {
+                        count_index.insert(from.clone(), counts.len());
+                        counts.push((from.clone(), 1));
+                    }
                 }
                 out.messages.push(Message { id, from, date, edited, text, media, ..Default::default() });
             }

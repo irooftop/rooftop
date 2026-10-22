@@ -1,15 +1,27 @@
 //! Parser for Telegram Desktop "Machine-readable JSON" exports (`result.json`).
 //! Produces the same structures as the HTML parser.
+//!
+//! The file is streamed: one message at a time is turned into a [`Message`], so
+//! a file with hundreds of thousands of messages never exists as one JSON tree.
 
+use crate::import::{Progress, Report, Stage};
 use crate::model::{Media, MediaKind, Message, Reaction};
 use crate::telegram::ParsedHtml;
 use anyhow::{Context, Result, bail};
 use chrono::NaiveDateTime;
+use serde::Deserializer as _;
+use serde::de::{DeserializeSeed, IgnoredAny, MapAccess, SeqAccess, Visitor};
 use serde_json::Value;
-use std::io::Read;
+use std::cell::Cell;
+use std::fmt;
+use std::io::{BufReader, Read};
 use std::path::Path;
+use std::rc::Rc;
 
 pub const FILE_NAME: &str = "result.json";
+
+/// Elements between two progress reports.
+const REPORT_EVERY: usize = 2000;
 
 /// Cheap check that `path` is a single-chat export (the `messages` key sits near the top).
 pub fn looks_like_chat_json(path: &Path) -> bool {
@@ -20,24 +32,105 @@ pub fn looks_like_chat_json(path: &Path) -> bool {
     head.trim_start().starts_with('{') && head.contains("\"messages\"")
 }
 
-pub fn parse_export_dir(dir: &Path) -> Result<ParsedHtml> {
+/// Reads `result.json` from `dir`, reporting the share of the file read so far.
+pub fn parse_export_dir(dir: &Path, report: Report) -> Result<ParsedHtml> {
     let path = dir.join(FILE_NAME);
-    let raw = std::fs::read_to_string(&path).with_context(|| format!("reading {}", path.display()))?;
-    parse_json(&raw)
+    let file = std::fs::File::open(&path).with_context(|| format!("reading {}", path.display()))?;
+    let total = file.metadata().map_or(0, |m| m.len() as usize);
+    let read = Rc::new(Cell::new(0usize));
+    let reader = Counting { inner: BufReader::with_capacity(1 << 20, file), read: read.clone() };
+    parse_reader(reader, &|messages| report(Progress { stage: Stage::Parsing, done: read.get().min(total), total, messages }))
 }
 
-pub fn parse_json(raw: &str) -> Result<ParsedHtml> {
-    let v: Value = serde_json::from_str(raw).context("invalid JSON export")?;
-    let Some(messages) = v.get("messages").and_then(Value::as_array) else {
-        bail!("the JSON export has no `messages` list (export a single chat)");
-    };
-    let mut out = ParsedHtml { title: v.get("name").and_then(Value::as_str).unwrap_or_default().trim().to_string(), ..Default::default() };
-    for m in messages {
-        if let Some(msg) = parse_message(m) {
-            out.messages.push(msg);
-        }
+/// Counts the bytes handed out by the reader.
+struct Counting<R> {
+    inner: R,
+    read: Rc<Cell<usize>>,
+}
+
+impl<R: Read> Read for Counting<R> {
+    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+        let n = self.inner.read(buf)?;
+        self.read.set(self.read.get() + n);
+        Ok(n)
     }
+}
+
+/// Parses an export from `reader`, calling `progress` with the message count every few thousand messages.
+fn parse_reader(reader: impl Read, progress: &dyn Fn(usize)) -> Result<ParsedHtml> {
+    let mut out = ParsedHtml::default();
+    let mut de = serde_json::Deserializer::from_reader(reader);
+    let has_messages = de.deserialize_map(Root { out: &mut out, progress }).context("invalid JSON export")?;
+    if !has_messages {
+        bail!("the JSON export has no `messages` list (export a single chat)");
+    }
+    progress(out.messages.len());
     Ok(out)
+}
+
+/// The top-level object: `name` and the `messages` array, in any order.
+struct Root<'a> {
+    out: &'a mut ParsedHtml,
+    progress: &'a dyn Fn(usize),
+}
+
+impl<'de> Visitor<'de> for Root<'_> {
+    type Value = bool;
+
+    fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.write_str("a chat export object")
+    }
+
+    fn visit_map<A: MapAccess<'de>>(self, mut map: A) -> Result<bool, A::Error> {
+        let mut has_messages = false;
+        while let Some(key) = map.next_key::<String>()? {
+            match key.as_str() {
+                "name" => self.out.title = map.next_value::<Option<String>>()?.unwrap_or_default().trim().to_string(),
+                "messages" => {
+                    map.next_value_seed(Messages { out: &mut *self.out, progress: self.progress })?;
+                    has_messages = true;
+                }
+                _ => {
+                    map.next_value::<IgnoredAny>()?;
+                }
+            }
+        }
+        Ok(has_messages)
+    }
+}
+
+/// The `messages` array, converted element by element.
+struct Messages<'a> {
+    out: &'a mut ParsedHtml,
+    progress: &'a dyn Fn(usize),
+}
+
+impl<'de> DeserializeSeed<'de> for Messages<'_> {
+    type Value = ();
+
+    fn deserialize<D: serde::Deserializer<'de>>(self, d: D) -> Result<(), D::Error> {
+        d.deserialize_seq(self)
+    }
+}
+
+impl<'de> Visitor<'de> for Messages<'_> {
+    type Value = ();
+
+    fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.write_str("a list of messages")
+    }
+
+    fn visit_seq<A: SeqAccess<'de>>(self, mut seq: A) -> Result<(), A::Error> {
+        let mut seen = 0usize;
+        while let Some(m) = seq.next_element::<Value>()? {
+            self.out.messages.extend(parse_message(&m));
+            seen += 1;
+            if seen % REPORT_EVERY == 0 {
+                (self.progress)(self.out.messages.len());
+            }
+        }
+        Ok(())
+    }
 }
 
 fn str_of<'a>(m: &'a Value, key: &str) -> Option<&'a str> {
