@@ -14,7 +14,7 @@ rooftop convert [OPTIONS] <DIR>  print the {model, messages, tools} for an expor
 | `--data` | `ROOFTOP_DATA` | `./data` |
 | `--import` | `ROOFTOP_IMPORT` | – |
 | `--password` | `ROOFTOP_PASSWORD` | – |
-| `--max-upload-mb` | `ROOFTOP_MAX_UPLOAD_MB` | `2048` |
+| `--max-upload-mb` | `ROOFTOP_MAX_UPLOAD_MB` | `0` (unlimited) |
 | `--trust-proxy` | `ROOFTOP_TRUST_PROXY` | `false` |
 | `--telegram-token` | `TELEGRAM_BOT_TOKEN` | – |
 | `--telegram-chat` | `TELEGRAM_CHAT_ID` | every group the bot joins |

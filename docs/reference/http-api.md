@@ -7,7 +7,8 @@ JSON over HTTP. With `ROOFTOP_PASSWORD` set, the owner API needs HTTP Basic auth
 | Method | Path | |
 |---|---|---|
 | GET | `/api/state` | exports, chats, share links, LLM info |
-| POST | `/api/exports` | multipart upload: folder files with relative names, or a `.zip` |
+| POST | `/api/exports` | multipart upload: folder files with relative names, or a `.zip`. Answers `202 {"id"}` at once and imports in the background |
+| GET | `/api/imports/{id}` | progress of an import job, see below |
 | GET · DELETE | `/api/exports/{id}` | details with the media library · delete with its chats |
 | POST | `/api/exports/{id}/describe` | describe the media library |
 | POST | `/api/chats` | `{export_id, persona, user?, title?, notes?}` |
@@ -26,6 +27,22 @@ JSON over HTTP. With `ROOFTOP_PASSWORD` set, the owner API needs HTTP Basic auth
 | GET · POST | `/api/telegram` · `/api/telegram/link` | bot status and groups · a `t.me` link that adds the bot to a group |
 | GET · PUT | `/api/sharing` | Wi‑Fi and Internet sharing `{lan?, internet?, name?}` (owner UI on localhost only) |
 | GET | `/api/qr?text=…` | a QR code (SVG) |
+
+### Import jobs
+
+`GET /api/imports/{id}` returns
+
+```json
+{"id": "…", "state": "running", "stage": "parsing", "done": 37, "total": 121, "messages": 36000}
+```
+
+* `state`: `queued` (another import is running; they run one at a time), `running`, `done` or `failed`.
+* `stage`: `unpacking`, `reading`, `parsing` (`done` of `total` pages), `hashing` and `placing` (files), `saving`.
+* `messages`: messages found so far.
+* `failed` adds `error`, for example `no messages.html, result.json or WhatsApp .txt found in the upload`.
+* `done` adds `created` (`false` when the same export was imported before) and `export`, the summary also found in `/api/state`.
+
+The last 16 finished jobs are kept; an unknown id answers 404.
 
 ## Public
 

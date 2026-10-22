@@ -28,7 +28,7 @@ history budget, tool steps, MCP servers, the Telegram bot and Offline mode. `TEL
 | `ROOFTOP_DATA` | `./data` (`/data` in Docker) | exports, chats, settings |
 | `ROOFTOP_IMPORT` | – | exports to import on start, `:`-separated, idempotent |
 | `ROOFTOP_PASSWORD` | – | HTTP Basic auth for the owner UI (any user name). **Set it on a public server** |
-| `ROOFTOP_MAX_UPLOAD_MB` | `2048` | upload limit |
+| `ROOFTOP_MAX_UPLOAD_MB` | `0` | upload limit for the owner in MiB; `0` means none (exports are many GB). Set it on a server others can reach. Share links keep their own 16 MiB limit. The desktop app has no limit |
 | `ROOFTOP_TRUST_PROXY` | `false` | client IP from `X-Forwarded-For` / `X-Real-IP`, only behind a reverse proxy |
 | `ROOFTOP_FFMPEG` | `ffmpeg` on `PATH`, then Homebrew, `/usr/local`, `/usr/bin` | frames of GIFs and videos (optional) |
 | `TZ` | UTC | time zone of live messages |
