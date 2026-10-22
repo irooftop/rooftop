@@ -245,38 +245,96 @@ $("#exportList").addEventListener("click", async ev => {
 });
 
 // ---------- import ----------
-function setProgress(frac, indeterminate = false) {
-  for (const p of [$("#uploadProgress"), $("#uploadProgress2")]) {
-    p.classList.toggle("hidden", frac == null);
+// One import at a time. The status line and bar of both drop zones follow it from
+// the first click: reading the folder, uploading, then the server-side job.
+const IMP = { busy: false };
+const fmtNum = n => Number(n).toLocaleString("en-US");
+const fmtBytes = n => n >= 1e9 ? `${(n / 1e9).toFixed(1)} GB` : n >= 1e6 ? `${Math.round(n / 1e6)} MB` : `${Math.max(1, Math.round(n / 1e3))} KB`;
+function setImportStatus(text, { frac = null, indeterminate = false, error = false } = {}) {
+  for (const [st, bar] of [["#importStatus", "#uploadProgress"], ["#importStatus2", "#uploadProgress2"]]) {
+    const el = $(st), p = $(bar);
+    el.textContent = text || "";
+    el.hidden = !text;
+    el.classList.toggle("error", error);
+    p.classList.toggle("hidden", frac == null && !indeterminate);
     p.classList.toggle("indeterminate", indeterminate);
     p.firstElementChild.style.width = indeterminate ? "" : `${Math.round((frac || 0) * 100)}%`;
   }
 }
+function setImportBusy(busy) {
+  IMP.busy = busy;
+  for (const dz of [$("#dropzone"), $("#dropzone2")]) {
+    dz.classList.toggle("busy", busy);
+    dz.setAttribute("aria-busy", String(busy));
+    dz.querySelectorAll("button").forEach(b => { b.disabled = busy; });
+  }
+  $("#folderInput").disabled = $("#zipInput").disabled = busy;
+}
+function importFailed(message) {
+  setImportBusy(false);
+  setImportStatus(`${message} Choose the folder or .zip again to retry.`, { error: true });
+  toast(message, { error: true });
+}
+// What the server-side job is doing, from GET /api/imports/{id}.
+function jobText(j) {
+  const of = (what) => j.total ? `${what} ${fmtNum(j.done)} of ${fmtNum(j.total)}` : `${what}…`;
+  switch (j.stage) {
+    case "unpacking": return of("Unpacking archive: file");
+    case "parsing": return j.total > 1 ? `Reading messages: page ${fmtNum(j.done)} of ${fmtNum(j.total)} · ${fmtNum(j.messages)} messages` : `Reading messages · ${fmtNum(j.messages)} messages`;
+    case "hashing": return of("Checking media");
+    case "placing": return of("Moving media");
+    case "saving": return "Saving…";
+    default: return j.state === "queued" ? "Waiting for another import to finish…" : "Reading the export…";
+  }
+}
+async function pollImport(id) {
+  let failures = 0;
+  for (;;) {
+    await new Promise(r => setTimeout(r, 500));
+    let j;
+    try { j = await api(`/api/imports/${id}`); failures = 0; }
+    catch (e) { if (++failures > 10) return importFailed(`Lost contact with the import: ${e.message}`); continue; }
+    if (j.state === "failed") return importFailed(j.error || "Import failed.");
+    if (j.state === "done") return importDone(j);
+    setImportStatus(jobText(j), j.total > 1 ? { frac: j.done / j.total } : { indeterminate: true });
+  }
+}
+async function importDone(j) {
+  setImportStatus("");
+  setImportBusy(false);
+  $("#importDlg").close();
+  await loadState();
+  toast(j.created ? `Imported «${j.export.title}»: ${fmtNum(j.export.messages)} messages` : `«${j.export.title}» was already imported`);
+  openNewChat(j.export.id);
+}
 const SKIP = /(^|\/)(\.DS_Store|__MACOSX|Thumbs\.db)(\/|$)|(^|\/)(css|js|images)\//;
-function upload(files) {
+const paint = () => new Promise(r => requestAnimationFrame(() => setTimeout(r)));
+async function upload(files) {
+  if (IMP.busy) return;
+  setImportBusy(true);
+  setImportStatus(`Reading folder… ${fmtNum(files.length)} files`, { indeterminate: true });
+  await paint();
   files = files.filter(f => !SKIP.test(f.path));
-  if (!files.length) return toast("Nothing to upload", { error: true });
+  if (!files.length) return importFailed("Nothing to upload: the folder has no files.");
   const fd = new FormData();
   for (const f of files) fd.append("files", f.file, f.path);
-  return new Promise(resolve => {
-    const xhr = new XMLHttpRequest();
-    xhr.open("POST", "/api/exports");
-    xhr.upload.onprogress = e => { if (e.lengthComputable) setProgress(e.loaded / e.total, e.loaded === e.total); };
-    xhr.upload.onload = () => setProgress(1, true);
-    xhr.onerror = () => { setProgress(null); toast("Upload failed", { error: true }); resolve(); };
-    xhr.onload = async () => {
-      setProgress(null);
-      let data = {}; try { data = JSON.parse(xhr.responseText); } catch { }
-      if (xhr.status >= 300) { toast(data.error || `Upload failed (${xhr.status})`, { error: true }); return resolve(); }
-      $("#importDlg").close();
-      await loadState();
-      toast(data.created ? `Imported «${data.export.title}»: ${data.export.messages} messages` : `«${data.export.title}» was already imported`);
-      openNewChat(data.export.id);
-      resolve();
-    };
-    setProgress(0);
-    xhr.send(fd);
-  });
+  const xhr = new XMLHttpRequest();
+  xhr.open("POST", "/api/exports");
+  xhr.upload.onprogress = e => {
+    if (!e.lengthComputable) return;
+    const pct = Math.floor(e.loaded / e.total * 100);
+    setImportStatus(`Uploading ${fmtBytes(e.loaded)} of ${fmtBytes(e.total)} (${pct}%)`, { frac: e.loaded / e.total });
+  };
+  xhr.upload.onload = () => setImportStatus("Starting the import…", { indeterminate: true });
+  xhr.onerror = () => importFailed("Upload failed: could not reach the server.");
+  xhr.onload = () => {
+    let data = {}; try { data = JSON.parse(xhr.responseText); } catch { }
+    if (xhr.status >= 300 || !data.id) return importFailed(data.error || `Upload failed (${xhr.status}).`);
+    setImportStatus("Reading the export…", { indeterminate: true });
+    pollImport(data.id);
+  };
+  setImportStatus(`Uploading ${fmtNum(files.length)} files…`, { frac: 0 });
+  xhr.send(fd);
 }
 async function entriesToFiles(items) {
   const out = [];
@@ -284,6 +342,7 @@ async function entriesToFiles(items) {
     if (entry.isFile) {
       const file = await new Promise((res, rej) => entry.file(res, rej));
       out.push({ file, path: prefix + entry.name });
+      if (out.length % 200 === 0) setImportStatus(`Reading folder… ${fmtNum(out.length)} files`, { indeterminate: true });
     } else if (entry.isDirectory) {
       const reader = entry.createReader();
       let batch;
@@ -302,17 +361,28 @@ function bindDropzone(el) {
   el.addEventListener("dragleave", () => el.classList.remove("drag"));
   el.addEventListener("drop", async e => {
     e.preventDefault(); el.classList.remove("drag");
+    if (IMP.busy) return;
+    setImportBusy(true);
+    setImportStatus("Reading folder…", { indeterminate: true });
     const items = [...e.dataTransfer.items].filter(i => i.kind === "file");
     let files = await entriesToFiles(items);
     if (!files.length) files = [...e.dataTransfer.files].map(f => ({ file: f, path: f.name }));
+    setImportBusy(false);
     upload(files);
   });
 }
 bindDropzone($("#dropzone")); bindDropzone($("#dropzone2"));
-$("#pickFolder").onclick = () => $("#folderInput").click();
+// The folder picker can take long to hand over tens of thousands of files: say so at once.
+const pickFolder = () => { setImportStatus("Waiting for the folder…", { indeterminate: true }); $("#folderInput").click(); };
+$("#folderInput").addEventListener("cancel", () => { if (!IMP.busy) setImportStatus(""); });
+$("#pickFolder").onclick = pickFolder;
 $("#pickZip").onclick = () => $("#zipInput").click();
-$$("[data-pick]").forEach(b => b.onclick = () => (b.dataset.pick === "zip" ? $("#zipInput") : $("#folderInput")).click());
-$("#folderInput").onchange = e => { upload([...e.target.files].map(f => ({ file: f, path: f.webkitRelativePath || f.name }))); e.target.value = ""; };
+$$("[data-pick]").forEach(b => b.onclick = () => (b.dataset.pick === "zip" ? $("#zipInput").click() : pickFolder()));
+$("#folderInput").onchange = e => {
+  const files = [...e.target.files].map(f => ({ file: f, path: f.webkitRelativePath || f.name }));
+  e.target.value = "";
+  files.length ? upload(files) : setImportStatus("");
+};
 $("#zipInput").onchange = e => { upload([...e.target.files].map(f => ({ file: f, path: f.name }))); e.target.value = ""; };
 // The import dialog shows the same walkthrough as the welcome screen: a copy of that SVG
 // with its own ids (gradient and clip ids must stay unique in the document).

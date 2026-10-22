@@ -948,7 +948,11 @@ a.btn { text-decoration: none; color: inherit; }
 .tut-drop .dz-icon .i { width: 26px; height: 26px; }
 .tut-drop .dz-title { grid-area: title; font-size: 15px; }
 .tut-drop .dz-actions { grid-area: actions; justify-content: flex-start; }
-.tut-drop .progress { grid-column: 1 / -1; }
+.tut-drop .progress, .tut-drop .dz-status { grid-column: 1 / -1; }
+.dz-status { margin: 0; font-size: 13px; font-variant-numeric: tabular-nums; }
+.dz-status.error { color: var(--danger); }
+.dropzone.busy { cursor: progress; }
+.dropzone.busy .dz-actions { opacity: .5; pointer-events: none; }
 .tut-drop .btn { min-height: 34px; padding: 6px 12px; }
 
 /* Import dialog */
