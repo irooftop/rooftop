@@ -53,7 +53,17 @@ pub struct Job {
 impl Job {
     fn new() -> Self {
         let id = uuid::Uuid::new_v4().simple().to_string()[..12].to_string();
-        let state = Snapshot { id, state: State::Queued, stage: Stage::Reading, done: 0, total: 0, messages: 0, error: None, created: None, export: None };
+        let state = Snapshot {
+            id,
+            state: State::Queued,
+            stage: Stage::Reading,
+            done: 0,
+            total: 0,
+            messages: 0,
+            error: None,
+            created: None,
+            export: None,
+        };
         Self { state: Mutex::new(state) }
     }
 
@@ -173,7 +183,13 @@ pub async fn run(st: &Arc<AppState>, src: PathBuf, how: Placement, report: Repor
 
 /// Builds the library, places the media and saves the export, removing what it
 /// wrote when a step fails.
-fn store_export(paths: &Paths, fingerprint: String, mut staged: import::Staged, how: Placement, report: import::Report) -> Result<ExportRecord> {
+fn store_export(
+    paths: &Paths,
+    fingerprint: String,
+    mut staged: import::Staged,
+    how: Placement,
+    report: import::Report,
+) -> Result<ExportRecord> {
     let id = uuid::Uuid::new_v4().simple().to_string()[..12].to_string();
     let result = (|| {
         let rels = staged.link_media(report)?;

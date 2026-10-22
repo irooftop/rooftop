@@ -124,7 +124,11 @@ fn write_json_atomic(path: &Path, value: &impl Serialize, pretty: bool) -> Resul
     let tmp = path.with_extension(format!("tmp-{}", uuid::Uuid::new_v4().simple()));
     let write = || -> Result<()> {
         let mut w = std::io::BufWriter::with_capacity(1 << 20, std::fs::File::create(&tmp)?);
-        if pretty { serde_json::to_writer_pretty(&mut w, value)? } else { serde_json::to_writer(&mut w, value)? }
+        if pretty {
+            serde_json::to_writer_pretty(&mut w, value)?
+        } else {
+            serde_json::to_writer(&mut w, value)?
+        }
         w.flush()?;
         Ok(())
     };

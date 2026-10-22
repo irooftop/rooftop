@@ -279,11 +279,8 @@ fn parse_body(body: &ElementRef, msg: &mut Message, top: bool) {
                     })
                     .unwrap_or_default();
                 let count = first_desc(&r, &SEL.count).and_then(|e| plain(&e).parse().ok()).unwrap_or(1);
-                let from = r
-                    .select(&SEL.titled)
-                    .filter_map(|e| e.attr("title").map(|s| s.trim().to_string()))
-                    .filter(|s| !s.is_empty())
-                    .collect();
+                let from =
+                    r.select(&SEL.titled).filter_map(|e| e.attr("title").map(|s| s.trim().to_string())).filter(|s| !s.is_empty()).collect();
                 if !emoji.is_empty() {
                     msg.reactions.push(Reaction { emoji, count, from });
                 }

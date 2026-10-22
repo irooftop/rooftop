@@ -33,14 +33,26 @@ fn page(first: usize, count: usize) -> String {
     h.push_str("<div class=\"page_header\"><div class=\"content\"><div class=\"text bold\">Anna</div></div></div><div class=\"page_body chat_page\"><div class=\"history\">");
     for n in first..first + count {
         let joined = n > 1 && sender(n) == sender(n - 1);
-        let _ = write!(h, "<div class=\"message default clearfix{}\" id=\"message{n}\"><div class=\"body\">", if joined { " joined" } else { "" });
-        let _ = write!(h, "<div class=\"pull_right date details\" title=\"01.02.2025 10:{:02}:{:02} UTC+03:00\">10:00</div>", (n / 60) % 60, n % 60);
+        let _ = write!(
+            h,
+            "<div class=\"message default clearfix{}\" id=\"message{n}\"><div class=\"body\">",
+            if joined { " joined" } else { "" }
+        );
+        let _ = write!(
+            h,
+            "<div class=\"pull_right date details\" title=\"01.02.2025 10:{:02}:{:02} UTC+03:00\">10:00</div>",
+            (n / 60) % 60,
+            n % 60
+        );
         if !joined {
             let _ = write!(h, "<div class=\"from_name\">{}</div>", sender(n));
         }
         if n % 500 == 0 {
             let file = format!("photos/photo_{}.jpg", (n / 500) % 5);
-            let _ = write!(h, "<div class=\"media_wrap clearfix\"><a class=\"photo_wrap clearfix pull_left\" href=\"{file}\"><img class=\"photo\" src=\"{file}\"></a></div>");
+            let _ = write!(
+                h,
+                "<div class=\"media_wrap clearfix\"><a class=\"photo_wrap clearfix pull_left\" href=\"{file}\"><img class=\"photo\" src=\"{file}\"></a></div>"
+            );
         } else {
             let _ = write!(h, "<div class=\"text\">message number {n} with some words, an emoji \u{1F600} and a &amp; entity</div>");
         }
@@ -138,7 +150,11 @@ async fn run(messages: usize, budget: Duration) {
     let started = Instant::now();
     let (job, answered) = import(&e.app, &files).await;
     let total = started.elapsed();
-    println!("{messages} messages, {} pages, {:.1} MB: upload answered in {answered:.2?}, import took {total:.2?}", files.len() - 5, size as f64 / 1e6);
+    println!(
+        "{messages} messages, {} pages, {:.1} MB: upload answered in {answered:.2?}, import took {total:.2?}",
+        files.len() - 5,
+        size as f64 / 1e6
+    );
     assert_eq!(job["state"], "done", "{job}");
     assert!(total < budget, "import took {total:?}, budget {budget:?}");
     assert_eq!(job["created"], true);
