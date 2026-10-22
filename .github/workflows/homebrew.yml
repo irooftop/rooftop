@@ -1,4 +1,4 @@
-# Updates the Homebrew tap (irooftop/homebrew-tap) when a release is published:
+# Updates the Homebrew tap (irooftop/homebrew-tap) when a release is published, and from desktop.yml right after it publishes a tag release:
 # Formula/rooftop.rb (server, built from source) and Casks/irooftop.rb (desktop DMGs).
 # Needs one repository secret with write access to irooftop/homebrew-tap only:
 #   HOMEBREW_TAP_TOKEN       a fine-grained token: repository irooftop/homebrew-tap, Contents: read and write
@@ -9,6 +9,14 @@ name: Homebrew
 on:
   release:
     types: [published]
+  # Called by desktop.yml once it has published the release (a release published with GITHUB_TOKEN
+  # does not fire the `release` event above, so the tag-push pipeline calls this directly).
+  workflow_call:
+    inputs:
+      tag:
+        description: "Release tag to publish to the tap, e.g. v0.1.0"
+        required: true
+        type: string
   workflow_dispatch:
     inputs:
       tag:
@@ -26,7 +34,7 @@ jobs:
   tap:
     runs-on: ubuntu-latest
     env:
-      TAG: ${{ github.event.release.tag_name || inputs.tag }}
+      TAG: ${{ inputs.tag || github.event.release.tag_name }}
       HAS_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN != '' }}
       HAS_KEY: ${{ secrets.HOMEBREW_TAP_DEPLOY_KEY != '' }}
     steps:
@@ -35,9 +43,9 @@ jobs:
         run: |
           if [ "$HAS_TOKEN" = true ] || [ "$HAS_KEY" = true ]; then echo "ok=true" >> "$GITHUB_OUTPUT"
           else echo "::notice::No HOMEBREW_TAP_TOKEN or HOMEBREW_TAP_DEPLOY_KEY secret: the tap was not updated"; echo "ok=false" >> "$GITHUB_OUTPUT"; fi
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
         if: steps.creds.outputs.ok == 'true'
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
         if: steps.creds.outputs.ok == 'true'
         with:
           repository: irooftop/homebrew-tap
