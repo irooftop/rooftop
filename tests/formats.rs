@@ -363,10 +363,25 @@ async fn upload(files: &[(&str, &[u8])]) -> (StatusCode, serde_json::Value, temp
     let app = server::router(AppState::new(paths, db, llm), ServerOptions::default());
     let (ct, body) = multipart(files);
     let req = Request::builder().method("POST").uri("/api/exports").header(header::CONTENT_TYPE, ct).body(Body::from(body)).unwrap();
-    let resp = app.oneshot(req).await.unwrap();
+    let (status, started) = send(&app, req).await;
+    assert_eq!(status, StatusCode::ACCEPTED, "{started}");
+    // The import runs in the background: poll its job to the end.
+    let uri = format!("/api/imports/{}", started["id"].as_str().unwrap());
+    loop {
+        let (_, job) = send(&app, Request::builder().uri(&uri).body(Body::empty()).unwrap()).await;
+        match job["state"].as_str() {
+            Some("done") => return (StatusCode::OK, job, tmp),
+            Some("failed") => return (StatusCode::BAD_REQUEST, job, tmp),
+            _ => tokio::time::sleep(std::time::Duration::from_millis(10)).await,
+        }
+    }
+}
+
+async fn send(app: &axum::Router, req: Request<Body>) -> (StatusCode, serde_json::Value) {
+    let resp = app.clone().oneshot(req).await.unwrap();
     let status = resp.status();
     let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
-    (status, serde_json::from_slice(&bytes).unwrap_or_default(), tmp)
+    (status, serde_json::from_slice(&bytes).unwrap_or_default())
 }
 
 #[tokio::test]

@@ -51,6 +51,7 @@ pub(crate) fn bad(msg: impl Into<String>) -> ApiError {
 
 pub(crate) type ApiResult<T = Json<Value>> = Result<T, ApiError>;
 
+#[derive(Default)]
 pub struct ServerOptions {
     pub password: Option<String>,
     /// Largest request body the owner routes accept; 0 means no limit (the default:
@@ -61,12 +62,6 @@ pub struct ServerOptions {
     pub trust_proxy: bool,
     /// Relay hub ([`crate::relay_hub`]): serves `<name>.<domain>` for iRoof.top apps.
     pub relay_hub: Option<Arc<crate::relay_hub::Hub>>,
-}
-
-impl Default for ServerOptions {
-    fn default() -> Self {
-        Self { password: None, max_upload_bytes: 0, trust_proxy: false, relay_hub: None }
-    }
 }
 
 /// Largest request a visitor can send (voice messages are ≤ 5 MiB).
