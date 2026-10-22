@@ -417,3 +417,169 @@ async fn upload_rejects_unrelated_text_with_a_helpful_error() {
     assert_eq!(st, StatusCode::BAD_REQUEST);
     assert!(v.to_string().contains("WhatsApp"), "{v}");
 }
+
+fn test_app() -> (axum::Router, tempfile::TempDir) {
+    let tmp = tempfile::tempdir().unwrap();
+    let paths = Paths::new(tmp.path().to_path_buf());
+    let db = paths.load().unwrap();
+    let llm = LlmConfig { base_url: "http://127.0.0.1:9/v1".into(), api_key: String::new(), model: "test".into(), temperature: None };
+    (server::router(AppState::new(paths, db, llm), ServerOptions::default()), tmp)
+}
+
+fn post_files(uri: &str, files: &[(&str, &[u8])]) -> Request<Body> {
+    let (ct, body) = multipart(files);
+    Request::builder().method("POST").uri(uri).header(header::CONTENT_TYPE, ct).body(Body::from(body)).unwrap()
+}
+
+async fn wait_for_job(app: &axum::Router, id: &str) -> serde_json::Value {
+    let uri = format!("/api/imports/{id}");
+    loop {
+        let (_, job) = send(app, Request::builder().uri(&uri).body(Body::empty()).unwrap()).await;
+        if matches!(job["state"].as_str(), Some("done" | "failed")) {
+            return job;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+    }
+}
+
+/// The web UI uploads big exports in batches: a session, several (retried) batches, then the import.
+#[tokio::test]
+async fn upload_session_imports_files_sent_in_batches() {
+    let (app, tmp) = test_app();
+    let (st, v) = send(&app, Request::builder().method("POST").uri("/api/uploads").body(Body::empty()).unwrap()).await;
+    assert_eq!(st, StatusCode::OK, "{v}");
+    let id = v["id"].as_str().unwrap().to_string();
+    let chat = b"21/10/2026, 18:06 - Kate: hi\n21/10/2026, 18:07 - Me: IMG-20261021-WA0001.jpg (file attached)\n";
+    let files = format!("/api/uploads/{id}/files");
+    let (st, v) = send(&app, post_files(&files, &[("Chat/WhatsApp Chat with Kate.txt", chat)])).await;
+    assert_eq!(st, StatusCode::OK, "{v}");
+    assert_eq!(v["files"], 1);
+    // A batch sent twice (a retry) replaces its files.
+    for _ in 0..2 {
+        let (st, v) = send(&app, post_files(&files, &[("Chat/IMG-20261021-WA0001.jpg", b"jpg")])).await;
+        assert_eq!(st, StatusCode::OK, "{v}");
+        assert_eq!(v["bytes"], 3);
+    }
+    let import = format!("/api/uploads/{id}/import");
+    let (st, v) = send(&app, Request::builder().method("POST").uri(&import).body(Body::empty()).unwrap()).await;
+    assert_eq!(st, StatusCode::ACCEPTED, "{v}");
+    let job = wait_for_job(&app, v["id"].as_str().unwrap()).await;
+    assert_eq!(job["state"], "done", "{job}");
+    assert_eq!(job["export"]["title"], "Kate");
+    // The session is used up: no second import, no more batches.
+    let (st, _) = send(&app, Request::builder().method("POST").uri(&import).body(Body::empty()).unwrap()).await;
+    assert_eq!(st, StatusCode::NOT_FOUND);
+    let (st, _) = send(&app, post_files(&files, &[("x.jpg", b"x")])).await;
+    assert_eq!(st, StatusCode::NOT_FOUND);
+    // Nothing is left in tmp once the job is done.
+    let left: Vec<_> = std::fs::read_dir(tmp.path().join("tmp")).map(|d| d.flatten().map(|e| e.path()).collect()).unwrap_or_default();
+    assert!(left.is_empty(), "{left:?}");
+}
+
+#[tokio::test]
+async fn upload_session_rejects_bad_ids_and_empty_imports() {
+    let (app, _tmp) = test_app();
+    for bad in ["../../etc", "zz", "0123456789abcdef0123456789abcdeg"] {
+        let (st, _) = send(&app, post_files(&format!("/api/uploads/{bad}/files"), &[("a.txt", b"a")])).await;
+        assert_eq!(st, StatusCode::NOT_FOUND, "{bad}");
+    }
+    let (_, v) = send(&app, Request::builder().method("POST").uri("/api/uploads").body(Body::empty()).unwrap()).await;
+    let id = v["id"].as_str().unwrap();
+    let (st, v) = send(&app, Request::builder().method("POST").uri(format!("/api/uploads/{id}/import")).body(Body::empty()).unwrap()).await;
+    assert_eq!(st, StatusCode::BAD_REQUEST, "{v}");
+    // Cancelling drops the session.
+    let (_, v) = send(&app, Request::builder().method("POST").uri("/api/uploads").body(Body::empty()).unwrap()).await;
+    let id = v["id"].as_str().unwrap();
+    let (st, _) = send(&app, Request::builder().method("DELETE").uri(format!("/api/uploads/{id}")).body(Body::empty()).unwrap()).await;
+    assert_eq!(st, StatusCode::OK);
+    let (st, _) = send(&app, post_files(&format!("/api/uploads/{id}/files"), &[("a.txt", b"a")])).await;
+    assert_eq!(st, StatusCode::NOT_FOUND);
+}
+
+/// A body that breaks off mid-file names the cause and the file instead of axum's generic message.
+#[tokio::test]
+async fn broken_upload_names_the_cause_and_leaves_no_partial_file() {
+    let (app, tmp) = test_app();
+    let (_, v) = send(&app, Request::builder().method("POST").uri("/api/uploads").body(Body::empty()).unwrap()).await;
+    let id = v["id"].as_str().unwrap();
+    let (ct, body) = multipart(&[("Chat/ok.jpg", b"fine"), ("Chat/big.mp4", &[7u8; 4096])]);
+    let cut = body.len() - 1000; // inside the second file
+    let req = Request::builder()
+        .method("POST")
+        .uri(format!("/api/uploads/{id}/files"))
+        .header(header::CONTENT_TYPE, ct)
+        .body(Body::from(body[..cut].to_vec()))
+        .unwrap();
+    let (st, v) = send(&app, req).await;
+    assert_eq!(st, StatusCode::BAD_REQUEST, "{v}");
+    let err = v["error"].as_str().unwrap();
+    assert!(err.contains("Chat/big.mp4") && !err.contains("Error parsing") && err.contains("the server received"), "{err}");
+    let dir = tmp.path().join("tmp").join(format!("up-{id}")).join("files").join("Chat");
+    assert!(dir.join("ok.jpg").exists());
+    assert!(!dir.join("big.mp4").exists() && !dir.join("big.mp4.part").exists());
+}
+
+/// Before the media: the check reads the chat, and finds an export that is already imported.
+#[tokio::test]
+async fn upload_check_reads_the_chat_and_spots_a_repeat() {
+    let (app, _tmp) = test_app();
+    let chat: &[u8] = b"21/10/2026, 18:06 - Kate: hi\n21/10/2026, 18:07 - Me: yo\n";
+    let mut job_export = None;
+    for round in 0..2 {
+        let (_, v) = send(&app, Request::builder().method("POST").uri("/api/uploads").body(Body::empty()).unwrap()).await;
+        let id = v["id"].as_str().unwrap().to_string();
+        let (st, v) = send(&app, post_files(&format!("/api/uploads/{id}/files"), &[("WhatsApp Chat with Kate.txt", chat)])).await;
+        assert_eq!(st, StatusCode::OK, "{v}");
+        let check = Request::builder()
+            .method("POST")
+            .uri(format!("/api/uploads/{id}/check"))
+            .header(header::CONTENT_TYPE, "application/json")
+            .body(Body::from(r#"{"bytes": 1000}"#))
+            .unwrap();
+        let (st, c) = send(&app, check).await;
+        assert_eq!(st, StatusCode::OK, "{c}");
+        assert_eq!(c["title"], "Kate");
+        assert_eq!(c["messages"], 2);
+        if round == 0 {
+            assert!(c["existing"].is_null(), "{c}");
+            assert_eq!(c["fits"], true, "{c}");
+            let (_, v) =
+                send(&app, Request::builder().method("POST").uri(format!("/api/uploads/{id}/import")).body(Body::empty()).unwrap()).await;
+            let job = wait_for_job(&app, v["id"].as_str().unwrap()).await;
+            job_export = Some(job["export"]["id"].clone());
+        } else {
+            assert_eq!(Some(c["existing"]["id"].clone()), job_export, "{c}");
+        }
+    }
+    // Way more than any disk: refused before the media are sent.
+    let (_, v) = send(&app, Request::builder().method("POST").uri("/api/uploads").body(Body::empty()).unwrap()).await;
+    let id = v["id"].as_str().unwrap().to_string();
+    send(&app, post_files(&format!("/api/uploads/{id}/files"), &[("WhatsApp Chat with Bob.txt", b"21/10/2026, 18:06 - Bob: hi\n")])).await;
+    let check = Request::builder()
+        .method("POST")
+        .uri(format!("/api/uploads/{id}/check"))
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(format!(r#"{{"bytes": {}}}"#, u64::MAX / 4)))
+        .unwrap();
+    let (_, c) = send(&app, check).await;
+    if !c["free_bytes"].is_null() {
+        assert_eq!(c["fits"], false, "{c}");
+    }
+    // Something that isn't a chat fails at the check, not after the upload.
+    let (_, v) = send(&app, Request::builder().method("POST").uri("/api/uploads").body(Body::empty()).unwrap()).await;
+    let id = v["id"].as_str().unwrap().to_string();
+    send(&app, post_files(&format!("/api/uploads/{id}/files"), &[("notes.txt", b"nothing here")])).await;
+    let (st, _) = send(&app, Request::builder().method("POST").uri(format!("/api/uploads/{id}/check")).body(Body::empty()).unwrap()).await;
+    assert_eq!(st, StatusCode::BAD_REQUEST);
+}
+
+/// Inline SVGs carry their description in aria-label: a <title> would pop up as a tooltip.
+#[tokio::test]
+async fn index_svgs_have_no_tooltip_titles() {
+    let (app, _tmp) = test_app();
+    let resp = app.clone().oneshot(Request::builder().uri("/").body(Body::empty()).unwrap()).await.unwrap();
+    let html = String::from_utf8(axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap().to_vec()).unwrap();
+    assert_eq!(html.matches("<title").count(), 1, "only the page title");
+    assert!(html.contains(r#"id="tutorial""#) && html.contains(r#"aria-label="How to export a chat in Telegram Desktop"#));
+    assert!(!html.contains("aria-labelledby=\"tut-title\"") && !html.contains("sceneTitle"));
+}

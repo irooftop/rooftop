@@ -231,6 +231,17 @@ button.avatar:focus-visible { outline: 2px solid var(--accent); outline-offset: 
 .media img, .media video { display: block; max-width: 100%; max-height: 420px; border-radius: 12px; background: rgba(0,0,0,.08); }
 .bubble.media-only { padding: 4px; }
 .bubble.media-only .media { margin: 0; }
+/* Photo, video or GIF with a caption (or reply/forward header): like Telegram, the media sets
+   the bubble's width and spans it edge to edge inside a 4 px frame; the caption wraps to that
+   width instead of stretching the bubble. Narrow (portrait) media is centered on a soft
+   backdrop rather than left-aligned in a wide bubble. */
+.bubble.with-media { width: fit-content; min-width: 200px; }
+.bubble.with-media > .media { margin: 4px -7px 6px; max-width: none; display: flex; justify-content: center; background: color-mix(in srgb, currentColor 6%, transparent); border-radius: 12px; }
+.bubble.with-media > .media:first-child { margin-top: -3px; }
+.bubble.with-media > .media img, .bubble.with-media > .media video { border-radius: 0; background: none; }
+.bubble.with-media > .media.gif video, .bubble.with-media > .media.gif img { max-width: 100%; }
+/* Zero intrinsic width: these fill the bubble but never widen it beyond the media. */
+.bubble.with-media > .text, .bubble.with-media > .lp, .bubble.with-media > .reply, .bubble.with-media > .fwd, .bubble.with-media > .from, .bubble.with-media > .reactions { width: 0; min-width: 100%; }
 .sticker img, .sticker video { width: 180px; height: 180px; object-fit: contain; background: transparent; display: block; }
 .sticker.placeholder { width: 160px; height: 120px; display: grid; place-items: center; color: var(--muted); background: var(--in); border-radius: 16px; box-shadow: var(--shadow); }
 .round video { width: 220px; height: 220px; border-radius: 50%; object-fit: cover; }
@@ -415,7 +426,13 @@ dialog.nudge > * { animation: dlg-nudge .32s ease; }
 .md-filters button span { color: var(--muted); margin-left: 2px; font-weight: 400; font-variant-numeric: tabular-nums; }
 .md-filters button[aria-selected="true"] { background: var(--accent); border-color: var(--accent); color: #fff; }
 .md-filters button[aria-selected="true"] span { color: rgba(255,255,255,.85); }
-.md-progress { display: flex; align-items: center; gap: 10px; }
+.md-bar select { flex: none; width: auto; max-width: 190px; }
+.md-progress { display: flex; align-items: center; gap: 10px; min-height: 30px; }
+.md-summary { min-width: 0; flex: 1; font-variant-numeric: tabular-nums; }
+.md-progress.running .md-meter { width: 200px; }
+.md-meter.running > div { background: linear-gradient(90deg, var(--accent), color-mix(in srgb, var(--accent) 60%, #fff), var(--accent)) 0 0 / 200% 100%; animation: md-run 1.6s linear infinite; }
+@keyframes md-run { to { background-position: -200% 0; } }
+@media (prefers-reduced-motion: reduce) { .md-meter.running > div { animation: none; } }
 .md-meter { width: 140px; flex: none; height: 6px; border-radius: 3px; background: var(--bg-2); box-shadow: inset 0 0 0 1px var(--border); overflow: hidden; }
 .md-meter > div { height: 100%; background: var(--accent); border-radius: 3px; transition: width .3s; }
 .md-meter.done > div { background: #2fa84f; }
@@ -802,9 +819,21 @@ a.btn { text-decoration: none; color: inherit; }
 .setup-note .sn-text span { color: var(--muted); font-size: 12px; }
 .setup-note .sn-go { flex: none; width: 16px; height: 16px; color: var(--muted); transition: transform .15s; }
 .setup-note:hover .sn-go { transform: translateX(2px); }
-.test-result { font-size: 13.5px; line-height: 1.45; padding: 8px 12px; border-radius: 10px; background: var(--bg-2); overflow-wrap: anywhere; }
-.test-result.ok { color: #1f8a3b; background: color-mix(in srgb, #2fa84f 12%, var(--panel)); }
-.test-result.err { color: var(--danger); background: color-mix(in srgb, var(--danger) 10%, var(--panel)); }
+.test-result { --tone: var(--muted); font-size: 13.5px; line-height: 1.45; padding: 10px 12px; border-radius: 12px; overflow-wrap: anywhere;
+  background: color-mix(in srgb, var(--tone) 9%, var(--panel)); border: 1px solid color-mix(in srgb, var(--tone) 28%, transparent); display: grid; gap: 6px; }
+.test-result { scroll-margin: 12px 0 84px; } /* clear of the sticky button bar when scrolled to */
+.test-result.ok { --tone: #2fa84f; }
+.test-result.err { --tone: var(--danger); }
+.test-result .tr-head { display: flex; align-items: center; gap: 8px; }
+.test-result .tr-head b { color: color-mix(in srgb, var(--tone) 80%, var(--text)); font-weight: 600; }
+.test-result.busy .tr-head b { color: var(--text); font-weight: 500; }
+.test-result .tr-head .i { width: 18px; height: 18px; flex: none; color: var(--tone); }
+.test-result .tr-time { margin-left: auto; color: var(--muted); font-size: 12.5px; font-variant-numeric: tabular-nums; }
+.test-result .tr-msg { margin: 0; color: var(--text); }
+.test-result .tr-rows { display: grid; grid-template-columns: auto 1fr; gap: 2px 12px; margin: 0; font-size: 12.5px; }
+.test-result .tr-rows dt { color: var(--muted); }
+.test-result .tr-rows dd { margin: 0; min-width: 0; color: var(--text); }
+.test-result .tr-rows code { font-size: 12px; }
 
 /* Desktop app on macOS: overlay title bar (traffic lights at x 18, centred on the header row) */
 .mac-titlebar .side-head { padding-left: 86px; min-height: 58px; }
@@ -843,6 +872,9 @@ a.btn { text-decoration: none; color: inherit; }
   .md-grid { grid-template-columns: 1fr; max-height: none; overflow: visible; }
   .md-bar { flex-wrap: wrap; }
   .md-search { flex-basis: 100%; }
+  .md-bar select { flex: 1; max-width: none; }
+  .md-progress { flex-wrap: wrap; }
+  .md-progress .md-meter, .md-progress.running .md-meter { width: auto; flex-basis: 100%; }
   .md-meter { flex: 1; }
   .md-ai { width: 36px; height: 36px; }
   .md-meta { height: 36px; }
@@ -995,5 +1027,20 @@ a.btn { text-decoration: none; color: inherit; }
 .offline-badge { display: inline-flex; align-items: center; gap: 4px; height: 22px; padding: 0 9px 0 7px; margin-right: 4px; border: 0; border-radius: 999px; font: inherit; font-size: 11.5px; font-weight: 600; cursor: pointer; color: #23883f; background: color-mix(in srgb, #2fa84f 15%, transparent); }
 .offline-badge .i { width: 13px; height: 13px; }
 .offline-badge.hidden { display: none; }
+/* The header row never pushes Theme and Settings out of the sidebar: the actions keep their
+   size, the brand gives way. With Offline on, the wordmark steps aside (the logo stays), and
+   in a very narrow header the badge keeps only its lock. */
+.side-head { gap: 8px; container-type: inline-size; }
+.side-head .brand { min-width: 0; flex: 0 1 auto; }
+.side-head .wordmark { overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.side-head .head-actions { flex: none; }
+@container (max-width: 350px) { .side-head.offline .brand .wordmark { display: none; } }
+@container (max-width: 210px) { .offline-badge .ob-text { display: none; } .offline-badge { padding: 0 7px; } }
 .offline-row { margin-bottom: 12px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 12px; background: var(--bg-2); }
 .tg-settings.is-offline .seg { opacity: .5; }
+
+/* Settings: where the empty fields' values come from */
+.env-note { display: flex; gap: 8px; align-items: flex-start; margin: 2px 0 0; padding: 8px 10px; border-radius: 10px; background: var(--bg-2); line-height: 1.45; overflow-wrap: anywhere; }
+.env-note .i { flex: none; width: 16px; height: 16px; margin-top: 1px; }
+.env-note code { font-size: 12px; }
+.test-result .spin { width: 16px; height: 16px; flex: none; border-radius: 50%; border: 2px solid var(--accent); border-right-color: transparent; animation: spin .8s linear infinite; }

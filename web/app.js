@@ -304,37 +304,154 @@ async function importDone(j) {
   setImportBusy(false);
   $("#importDlg").close();
   await loadState();
-  toast(j.created ? `Imported «${j.export.title}»: ${fmtNum(j.export.messages)} messages` : `«${j.export.title}» was already imported`);
+  const skipped = IMP.skipped || []; IMP.skipped = null;
+  const done = j.created ? `Imported «${j.export.title}»: ${fmtNum(j.export.messages)} messages` : `«${j.export.title}» was already imported`;
+  if (skipped.length) toast(`${done}. ${fmtNum(skipped.length)} media file${skipped.length > 1 ? "s" : ""} couldn't be uploaded and show as missing, e.g. “${skipped[0].path}” (${skipped[0].why}). The browser console lists them.`, { ms: 15000 });
+  else toast(done);
   openNewChat(j.export.id);
 }
 const SKIP = /(^|\/)(\.DS_Store|__MACOSX|Thumbs\.db)(\/|$)|(^|\/)(css|js|images)\//;
 const paint = () => new Promise(r => requestAnimationFrame(() => setTimeout(r)));
+// Big exports (tens of thousands of files, many GB) go up in small batches, one after the
+// other: each request stays short, a broken one is retried on its own, and the browser
+// never has to build one giant request. The server imports once the last batch is in.
+const BATCH_FILES = 300, BATCH_BYTES = 64e6, BATCH_TRIES = 3;
+// Files the import can't do without: the chat itself (HTML/JSON pages, WhatsApp .txt).
+// Telegram pages and result.json, or a WhatsApp .txt, at most one folder down; documents
+// deeper in the export (files/…) are media like any other.
+const ESSENTIAL = { test: p => p.split("/").length <= 2 && /(^|\/)(messages\d*\.html|result\.json|[^/]+\.txt)$/i.test(p) };
+function* batchesOf(files) {
+  let batch = [], bytes = 0;
+  for (const f of files) {
+    if (batch.length && (batch.length >= BATCH_FILES || bytes + f.file.size > BATCH_BYTES)) { yield batch; batch = []; bytes = 0; }
+    batch.push(f); bytes += f.file.size;
+  }
+  if (batch.length) yield batch;
+}
+// One batch as multipart; `onBytes(n)` follows the bytes sent. Rejects with the server's error.
+function sendBatch(session, batch, onBytes) {
+  return new Promise((resolve, reject) => {
+    const fd = new FormData();
+    for (const f of batch) fd.append("files", f.file, f.path);
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", `/api/uploads/${session}/files`);
+    xhr.upload.onprogress = e => { if (e.lengthComputable) onBytes(e.loaded / e.total); };
+    xhr.onerror = () => reject(Object.assign(new Error("the connection to the server broke off"), { network: true }));
+    xhr.onabort = () => reject(Object.assign(new Error("cancelled"), { aborted: true }));
+    xhr.onload = () => {
+      let data = {}; try { data = JSON.parse(xhr.responseText); } catch { }
+      if (xhr.status >= 300) return reject(Object.assign(new Error(data.error || `HTTP ${xhr.status}`), { status: xhr.status }));
+      resolve(data);
+    };
+    xhr.send(fd);
+  });
+}
+// Files of a batch the browser can no longer read (moved, renamed, changed since they were
+// chosen, or cloud placeholders): a single one makes the browser abort the whole request.
+async function unreadable(batch) {
+  const bad = [];
+  for (const f of batch) {
+    try { await f.file.slice(0, 1).arrayBuffer(); } catch (e) { bad.push({ ...f, why: e.name || e.message }); }
+  }
+  return bad;
+}
+// Sends `batch`, retrying a broken request. A batch that keeps failing although every file
+// reads fine is split in halves until the one file that breaks it is found: that file is
+// skipped (media) or named (the chat itself). Returns the files it had to skip.
+async function sendReliably(session, batch, onBytes, depth = 0) {
+  const size = batch.reduce((n, f) => n + f.file.size, 0);
+  let error;
+  for (let attempt = 1; attempt <= (depth ? 2 : BATCH_TRIES); attempt++) {
+    try { await sendBatch(session, batch, frac => onBytes(frac * size)); return []; }
+    catch (e) {
+      error = e;
+      if (e.status === 404 || e.status === 413 || e.status === 507) throw e; // retrying can't help
+      const bad = await unreadable(batch);
+      if (bad.length) {
+        const essential = bad.find(f => ESSENTIAL.test(f.path));
+        if (essential) throw new Error(`can't read “${essential.path}” (${essential.why}): it was moved, changed or isn't downloaded yet (iCloud/OneDrive)`);
+        console.warn("iRoof.top import: skipping unreadable files", bad.map(f => `${f.path} (${f.why})`));
+        const gone = new Set(bad.map(f => f.path));
+        const rest = batch.filter(f => !gone.has(f.path));
+        return bad.map(f => ({ path: f.path, why: f.why })).concat(rest.length ? await sendReliably(session, rest, onBytes, depth) : []);
+      }
+      if (attempt < (depth ? 2 : BATCH_TRIES)) {
+        setImportStatus(`Upload interrupted (${e.message}), retrying…`, { indeterminate: true });
+        await sleep(1000 * attempt);
+      }
+    }
+  }
+  if (batch.length === 1) {
+    const f = batch[0];
+    console.error("iRoof.top import: this file breaks the upload", f.path, f.file.size, "bytes:", error.message);
+    if (ESSENTIAL.test(f.path)) throw new Error(`“${f.path}” can't be sent: ${error.message}`);
+    return [{ path: f.path, why: error.message }];
+  }
+  // Same failure every time: find the file that causes it.
+  setImportStatus(`A batch keeps failing: narrowing it down (${fmtNum(batch.length)} files)…`, { indeterminate: true });
+  const half = Math.ceil(batch.length / 2);
+  let done = 0;
+  const first = await sendReliably(session, batch.slice(0, half), n => onBytes(n), depth + 1);
+  done = batch.slice(0, half).reduce((n, f) => n + f.file.size, 0);
+  const second = await sendReliably(session, batch.slice(half), n => onBytes(done + n), depth + 1);
+  return first.concat(second);
+}
 async function upload(files) {
   if (IMP.busy) return;
+  IMP.skipped = null;
   setImportBusy(true);
   setImportStatus(`Reading folder… ${fmtNum(files.length)} files`, { indeterminate: true });
   await paint();
   files = files.filter(f => !SKIP.test(f.path));
   if (!files.length) return importFailed("Nothing to upload: the folder has no files.");
-  const fd = new FormData();
-  for (const f of files) fd.append("files", f.file, f.path);
-  const xhr = new XMLHttpRequest();
-  xhr.open("POST", "/api/exports");
-  xhr.upload.onprogress = e => {
-    if (!e.lengthComputable) return;
-    const pct = Math.floor(e.loaded / e.total * 100);
-    setImportStatus(`Uploading ${fmtBytes(e.loaded)} of ${fmtBytes(e.total)} (${pct}%)`, { frac: e.loaded / e.total });
+  let session;
+  try { session = (await api("/api/uploads", { method: "POST" })).id; }
+  catch (e) { return importFailed(`Upload failed: ${e.message}.`); }
+  const giveUp = message => { api(`/api/uploads/${session}`, { method: "DELETE" }).catch(() => { }); importFailed(message); };
+  // The chat itself first (pages, result.json, the WhatsApp .txt), unless it's one archive.
+  const zipped = files.length === 1 && /\.zip$/i.test(files[0].path);
+  const chat = zipped ? [] : files.filter(f => ESSENTIAL.test(f.path));
+  const media = zipped ? files : files.filter(f => !ESSENTIAL.test(f.path));
+  const total = files.reduce((n, f) => n + f.file.size, 0);
+  const skipped = [];
+  let sentBytes = 0, sentFiles = 0;
+  const show = (inFlight = 0) => {
+    const done = sentBytes + inFlight;
+    setImportStatus(`Uploading ${fmtBytes(done)} of ${fmtBytes(total)} (${Math.floor(total ? done / total * 100 : 100)}%) · ${fmtNum(sentFiles)} of ${fmtNum(files.length)} files`, { frac: total ? done / total : 0 });
   };
-  xhr.upload.onload = () => setImportStatus("Starting the import…", { indeterminate: true });
-  xhr.onerror = () => importFailed("Upload failed: could not reach the server.");
-  xhr.onload = () => {
-    let data = {}; try { data = JSON.parse(xhr.responseText); } catch { }
-    if (xhr.status >= 300 || !data.id) return importFailed(data.error || `Upload failed (${xhr.status}).`);
-    setImportStatus("Reading the export…", { indeterminate: true });
-    pollImport(data.id);
+  const sendAll = async list => {
+    for (const batch of batchesOf(list)) {
+      skipped.push(...await sendReliably(session, batch, show));
+      sentBytes += batch.reduce((n, f) => n + f.file.size, 0); sentFiles += batch.length;
+      show();
+    }
   };
-  setImportStatus(`Uploading ${fmtNum(files.length)} files…`, { frac: 0 });
-  xhr.send(fd);
+  try {
+    show();
+    if (chat.length) {
+      await sendAll(chat);
+      setImportStatus("Reading the messages…", { indeterminate: true });
+      const c = await api(`/api/uploads/${session}/check`, { method: "POST", body: { bytes: media.reduce((n, f) => n + f.file.size, 0) } });
+      if (c.existing) {
+        api(`/api/uploads/${session}`, { method: "DELETE" }).catch(() => { });
+        return importDone({ created: false, export: c.existing });
+      }
+      if (!c.fits) return giveUp(`Not enough disk space: the media need ${fmtBytes(c.needed_bytes)}, but only ${fmtBytes(c.free_bytes)} is free on the disk of ${c.data_dir || "the data directory"}. Free up space, or import the folder on the server with --import (it copies without an upload).`);
+      setImportStatus(`«${c.title}»: ${fmtNum(c.messages)} messages. Uploading the media…`, { frac: sentBytes / total });
+    }
+    await sendAll(media);
+  } catch (e) {
+    return giveUp(`Upload failed: ${e.message}.`);
+  }
+  setImportStatus("Starting the import…", { indeterminate: true });
+  let job;
+  try { job = await api(`/api/uploads/${session}/import`, { method: "POST" }); }
+  catch (e) { return giveUp(`Import failed: ${e.message}.`); }
+  // Said when the import is done (a toast now would be replaced by that one).
+  IMP.skipped = skipped;
+  if (skipped.length) console.warn("iRoof.top import: skipped files", skipped);
+  setImportStatus("Reading the export…", { indeterminate: true });
+  pollImport(job.id);
 }
 async function entriesToFiles(items) {
   const out = [];
@@ -388,7 +505,7 @@ $("#zipInput").onchange = e => { upload([...e.target.files].map(f => ({ file: f,
 // with its own ids (gradient and clip ids must stay unique in the document).
 function openImport() {
   const box = $("#imTut");
-  if (!box.firstElementChild) box.innerHTML = $("#tutorial").outerHTML.replace(/(id="|url\(#|href="#)(tut-[\w-]+|tutorial)/g, "$1$2-im").replace('aria-labelledby="tut-title-im"', "");
+  if (!box.firstElementChild) box.innerHTML = $("#tutorial").outerHTML.replace(/(id="|url\(#|href="#)(tut-[\w-]+|tutorial)/g, "$1$2-im");
   setImportSource(localStorage.getItem("iroof:import-source") || "telegram");
   $("#importDlg").showModal();
 }
@@ -494,6 +611,7 @@ function bubbleHtml(m, prev, next) {
   const k = m.media?.kind;
   const bare = (k === "sticker" || k === "round_video") && !m.text;
   const mediaOnly = !bare && m.media && ["photo", "video", "gif"].includes(k) && !m.text && !m.forwarded_from;
+  const withMedia = !bare && !mediaOnly && ["photo", "video", "gif"].includes(k) && m.media.available !== false && !!(m.media.file || m.media.url);
   const jumbo = !m.media && isEmojiOnly(m.text);
   const multi = S.chat?.export.multi ?? (S.chat?.export.participants.length || 0) > 2;
   let inner = "";
@@ -515,7 +633,7 @@ function bubbleHtml(m, prev, next) {
   const person = S.chat.export.participants.find(p => p.name === m.from);
   return `<div class="row ${mine ? "mine" : ""} ${startGroup ? "group-start" : ""} ${endGroup ? "group-end" : ""}" data-row="${m.id}">
     ${mine ? "" : profileAvatar(m.from, person?.avatar)}
-    <div class="bubble ${bare ? "bare" : ""} ${mediaOnly ? "media-only" : ""}" id="m-${m.id}">${inner}</div>
+    <div class="bubble ${bare ? "bare" : ""} ${mediaOnly ? "media-only" : ""} ${withMedia ? "with-media" : ""}" id="m-${m.id}">${inner}</div>
     <div class="tools"><button data-act="reply" data-id="${m.id}" title="Reply (select text first to quote)" aria-label="Reply">${icon("reply")}</button><button data-act="react" data-id="${m.id}" title="React" aria-label="React">${icon("smile")}</button></div>
   </div>`;
 }
@@ -885,7 +1003,7 @@ let lastPrompt = null;
 $("#promptBtn").onclick = async () => {
   try {
     lastPrompt = await api(`/api/chats/${S.chatId}/prompt`);
-    $("#promptInfo").textContent = `${lastPrompt.messages.length} messages, ${lastPrompt.tools.length} tools, model ${lastPrompt.model}${lastPrompt.dropped_turns ? ` · ${lastPrompt.dropped_turns} of ${lastPrompt.total_turns} oldest turns trimmed by the history budget` : ""}`;
+    $("#promptInfo").innerHTML = promptInfo(lastPrompt);
     // Big prompts are cheap to copy or download but slow to lay out: show only the beginning.
     const json = JSON.stringify({ model: lastPrompt.model, messages: lastPrompt.messages, tools: lastPrompt.tools }, null, 2);
     lastPrompt.json = json;
@@ -893,6 +1011,23 @@ $("#promptBtn").onclick = async () => {
     $("#promptPre").textContent = json.length > MAX ? `${json.slice(0, MAX)}\n\n… ${Math.round((json.length - MAX) / 1024)} KB more. Use Copy or Download for the full JSON.` : json;
     $("#promptDlg").showModal();
   } catch (e) { toast(e.message, { error: true }); }
+};
+// What is sent and why: the history is cut by size (Settings → History budget, in characters),
+// not by a message count, because the model's context and the price are counted in tokens.
+function promptInfo(p) {
+  const chars = p.messages.reduce((n, m) => n + JSON.stringify(m).length, 0);
+  const tokens = n => `≈${fmtNum(Math.round(n / 3.5 / 1000))}k tokens`;
+  const kept = p.total_turns - p.dropped_turns;
+  let s = `${fmtNum(p.messages.length)} messages, ${p.tools.length} tools, model ${esc(p.model)} · ${fmtNum(chars)} chars (${tokens(chars)})`;
+  if (p.history_budget_chars) s += `<br>History: ${p.dropped_turns ? `the latest ${fmtNum(kept)} of ${fmtNum(p.total_turns)} turns` : `all ${fmtNum(p.total_turns)} turns`} fit the history budget of ${fmtNum(p.history_budget_chars)} chars (${tokens(p.history_budget_chars)}).`;
+  if (p.dropped_turns) s += ` Older turns are ${p.memory?.summary ? "summarized in the memory" : "not replayed"}; the persona finds exact old messages with <code>search_history</code>.`;
+  if (p.pending_compaction) s += " The next reply first folds the oldest kept turns into the memory.";
+  return s;
+}
+$("#promptBudget").onclick = async () => {
+  $("#promptDlg").close();
+  await $("#settingsBtn").onclick();
+  const b = $("#sBudget"); b.focus(); b.select?.();
 };
 $("#promptCopy").onclick = async () => toast(await copyText(lastPrompt?.json || "") ? "Copied" : "Copy failed", {});
 $("#promptDownload").onclick = () => {
@@ -1012,6 +1147,7 @@ $("#settingsBtn").onclick = async () => {
     $("#sTemp").value = s.temperature ?? "";
     $("#sBudget").value = s.history_budget_chars; $("#sSteps").value = s.max_tool_steps;
     $("#sMediaModel").value = s.media_model || ""; $("#sMediaModel").placeholder = s.env_media_model || "same as Model";
+    renderEnvNote(s);
     $("#sMcp").value = JSON.stringify(s.mcpServers || {}, null, 2);
     renderOffline(s.offline);
     openTgSettings(s.telegram || {});
@@ -1023,6 +1159,19 @@ $("#settingsBtn").onclick = async () => {
     api("/api/mcp").then(r => renderMcpStatus(r.servers)).catch(e => { $("#mcpStatus").textContent = e.message; });
   } catch (e) { toast(e.message, { error: true }); }
 };
+// Values from .env (or the environment) are fallbacks: they show as the grey placeholder of an
+// empty field and are never copied into the saved settings, so editing .env keeps working.
+function renderEnvNote(s) {
+  const env = s.env || {}, used = [];
+  if (env.base_url) used.push(["OPENAI_BASE_URL", env.base_url, !s.base_url]);
+  if (env.model) used.push(["OPENAI_MODEL", env.model, !s.model]);
+  if (s.env_media_model) used.push(["OPENAI_MEDIA_MODEL", s.env_media_model, !s.media_model]);
+  const note = $("#sEnvNote");
+  note.classList.toggle("hidden", !used.length && !env.has_api_key);
+  const list = used.map(([k, v, active]) => `<code>${k}</code> = ${esc(v)}${active ? "" : " <i>(overridden here)</i>"}`).join(" · ");
+  const key = env.has_api_key ? "<code>OPENAI_API_KEY</code> is set." : s.has_api_key ? "" : "<code>OPENAI_API_KEY</code> is empty: paste a key above, or put it in <code>.env</code> and restart.";
+  note.innerHTML = `${icon("info")}<span><b>From .env</b> (shown in grey; empty fields use them, typed values override them): ${list}${list && key ? " · " : ""}${key}</span>`;
+}
 // Telegram: the mode applies right away (no Save needed), and the status follows the bot.
 const TG = { env: false, mode: "off", relayHost: "iroof.top", poll: null, busy: false, last: null, sig: null };
 const TG_TOKEN_HINT = `Create a bot with <a href="https://t.me/BotFather" target="_blank" rel="noopener noreferrer">@BotFather</a>, paste its token above and press <b>Connect</b>.`;
@@ -1041,6 +1190,7 @@ function renderOffline(o) {
 }
 function renderOfflineBadge() {
   $("#offlineBadge").classList.toggle("hidden", !OFFLINE);
+  $("#sidebar .side-head").classList.toggle("offline", OFFLINE);
 }
 let OFFLINE = false, OFFLINE_FORCED = false;
 $("#offlineBadge").onclick = () => $("#settingsBtn").click();
@@ -1221,19 +1371,40 @@ $("#settingsForm").addEventListener("submit", async e => {
     $("#settingsDlg").close(); toast("Settings saved"); loadState();
   } catch (err) { toast(err.message, { error: true }); }
 });
+// Test: saves, then one tiny request. The card says what was checked, how it went and,
+// on failure, what to change; the raw message stays one click away.
+function renderTest(state, r = {}) {
+  const out = $("#sTestResult");
+  const rows = items => `<dl class="tr-rows">${items.filter(([, v]) => v).map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join("")}</dl>`;
+  const where = [["Endpoint", esc(r.host || "")], ["Model", r.model ? `<code>${esc(r.model)}</code>` : ""]];
+  // An instant refusal (no key, offline) was never sent: no time to show.
+  const secs = r.ms >= 100 ? `${(r.ms / 1000).toFixed(1)} s` : "";
+  out.className = `test-result ${state}`;
+  if (state === "busy") out.innerHTML = `<div class="tr-head"><span class="spin" aria-hidden="true"></span><b>Saving and asking the model…</b></div>`;
+  else if (state === "ok") out.innerHTML = `<div class="tr-head">${icon("check")}<b>Connected</b><span class="tr-time">${secs}</span></div>`
+    + rows([...where, ["Reply", r.reply ? `“${esc(r.reply)}”` : "<i>empty</i>"]]);
+  else {
+    const [first, ...rest] = String(r.error || "Unknown error").split(/(?<=\.)\s+(?=[A-Z(])/);
+    out.innerHTML = `<div class="tr-head">${icon("alert")}<b>Not connected</b>${secs ? `<span class="tr-time">after ${secs}</span>` : ""}</div>`
+      + `<p class="tr-msg">${esc(first)}${rest.length ? ` ${esc(rest.join(" "))}` : ""}</p>` + rows(where);
+  }
+  out.scrollIntoView({ block: "nearest", behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
+}
 $("#sTest").onclick = async () => {
-  const out = $("#sTestResult"), btn = $("#sTest");
-  btn.disabled = true; out.className = "test-result"; out.textContent = "Saving and asking the model…";
+  const btn = $("#sTest");
+  btn.disabled = true; btn.setAttribute("aria-busy", "true");
+  renderTest("busy");
   try {
     await api("/api/settings", { method: "PUT", body: settingsBody() });
     if ($("#sKey").value.trim()) $("#sKey").placeholder = $("#sKey").value.trim() === "-" ? "sk-…" : "•••••• (saved — type to replace, “-” to clear)";
     $("#sKey").value = ""; loadState().catch(() => { });
     const r = await api("/api/llm/test", { method: "POST" });
-    out.className = `test-result ${r.ok ? "ok" : "err"}`;
-    out.textContent = r.ok ? `Connected: ${r.model} on ${r.host} answered in ${(r.ms / 1000).toFixed(1)} s.` : r.error;
-  } catch (err) { out.className = "test-result err"; out.textContent = err.message; }
-  finally { btn.disabled = false; }
+    renderTest(r.ok ? "ok" : "err", r);
+  } catch (err) { renderTest("err", { error: err.message }); }
+  finally { btn.disabled = false; btn.removeAttribute("aria-busy"); }
 };
+// A result describes the values it tested: editing them makes it stale.
+["#sBase", "#sModel", "#sKey"].forEach(sel => $(sel).addEventListener("input", () => { const o = $("#sTestResult"); if (!o.classList.contains("busy")) o.className = "test-result hidden"; }));
 // Errors that a setting can fix get a button to open Settings (owner only).
 function errorToast(msg, retry) {
   if (!GUEST && /Settings/.test(msg)) toast(msg, { error: true, action: () => $("#settingsBtn").click(), actionLabel: "Open Settings", ms: 9000 });
@@ -1252,15 +1423,22 @@ $("#setupNote").onclick = () => $("#settingsBtn").click();
 
 // ---------- media library (descriptions for the model) ----------
 const VISUAL = ["sticker", "gif", "photo", "video", "round_video", "voice"];
-const MD = { exportId: null, items: [], filter: "all", query: "", busy: new Set(), shown: 0, audio: null, io: null };
+const MD = { exportId: null, items: [], filter: "all", query: "", busy: new Set(), shown: 0, audio: null, io: null,
+  sort: localStorage.getItem("iroof:md-sort") || "uses", minUses: Number(localStorage.getItem("iroof:md-min-uses")) || 1 };
 const MD_PAGE = 60; // cards rendered per step: big libraries stay fast
-const MD_FILTERS = [["all", "All"], ["missing", "Missing"], ["sticker", "Stickers"], ["gif", "GIFs"], ["photo", "Photos"], ["video", "Videos"], ["voice", "Voice"]];
+const MD_FILTERS = [["all", "All"], ["missing", "Missing"], ["described", "Described"], ["sticker", "Stickers"], ["gif", "GIFs"], ["photo", "Photos"], ["video", "Videos"], ["voice", "Voice"]];
 const MD_KIND = { sticker: ["sticker", "Sticker"], gif: ["film", "GIF"], photo: ["image", "Photo"], video: ["film", "Video"], round_video: ["record", "Video message"], voice: ["mic", "Voice"] };
 async function openMedia(exportId) {
   try {
     const ex = await api(`/api/exports/${exportId}`);
     MD.exportId = exportId; MD.items = ex.library_items.filter(i => VISUAL.includes(i.kind)); MD.ffmpeg = ex.ffmpeg !== false;
+    for (const i of MD.items) {
+      i.firstUse = i.uses.reduce((m, u) => Math.min(m, u), Infinity);
+      i.lastUse = i.uses.reduce((m, u) => Math.max(m, u), -Infinity);
+    }
+    if (MD.lastRun?.exportId !== exportId) MD.lastRun = null;
     MD.filter = "all"; MD.query = ""; $("#mdSearch").value = "";
+    $("#mdSort").value = MD.sort; $("#mdMinUses").value = String(MD.minUses);
     $("#mdH").textContent = `Media library · ${ex.title}`;
     renderMedia();
     if (!$("#mediaDlg").open) {
@@ -1311,30 +1489,68 @@ function mdCard(i) {
       <textarea class="md-desc" rows="2" maxlength="1000" aria-label="${what} of ${esc(i.id)}" placeholder="${placeholder}" ${busy ? "disabled" : ""}>${esc(i.description || "")}</textarea>
     </div></div>`;
 }
-function mdVisible() {
+// Message ids grow with time, so the first and last use date an item.
+const MD_SORTS = {
+  uses: (a, b) => b.uses.length - a.uses.length,
+  rare: (a, b) => a.uses.length - b.uses.length,
+  recent: (a, b) => b.lastUse - a.lastUse,
+  first: (a, b) => a.firstUse - b.firstUse,
+};
+const mdKindOk = (i, k) => k === "all" ? true : k === "missing" ? !i.description : k === "described" ? !!i.description
+  : k === "video" ? i.kind === "video" || i.kind === "round_video" : i.kind === k;
+// Everything but the kind tab: what the tab counts are counted over.
+function mdScoped() {
   const q = MD.query.trim().toLowerCase();
-  return MD.items.filter(i => (MD.filter === "all" ? true : MD.filter === "missing" ? !i.description : MD.filter === "video" ? i.kind === "video" || i.kind === "round_video" : i.kind === MD.filter)
-    && (!q || i.id.toLowerCase().includes(q) || (i.description || "").toLowerCase().includes(q)));
+  return MD.items.filter(i => i.uses.length >= MD.minUses && (!q || i.id.toLowerCase().includes(q) || (i.description || "").toLowerCase().includes(q)));
 }
+// The list as shown, in the chosen order (stable: ties keep the server's most-used order).
+function mdVisible() {
+  const list = mdScoped().filter(i => mdKindOk(i, MD.filter));
+  return MD.sort === "uses" ? list : list.sort(MD_SORTS[MD.sort] || MD_SORTS.uses);
+}
+// What "Describe with AI" would send: the shown items that need it, top to bottom.
+const mdTodo = () => mdVisible().filter(i => !i.description && i.describable);
 // Header: filters, progress and the bulk button. Cheap, and it never touches the cards.
 function renderMediaHeader() {
-  const missing = MD.items.filter(i => !i.description && i.describable).length;
   const described = MD.items.filter(i => i.description).length, total = MD.items.length;
   const manualOnly = MD.items.filter(i => !i.description && !i.describable).length;
-  const count = k => k === "all" ? total : k === "missing" ? total - described : MD.items.filter(i => k === "video" ? i.kind === "video" || i.kind === "round_video" : i.kind === k).length;
+  const scoped = mdScoped();
   $("#mdFilters").innerHTML = MD_FILTERS.map(([k, label]) => {
-    const n = count(k);
-    return n || k === "all" || k === MD.filter ? `<button role="tab" aria-selected="${MD.filter === k}" data-filter="${k}">${label} <span>${n}</span></button>` : "";
+    const n = scoped.filter(i => mdKindOk(i, k)).length;
+    return n || k === "all" || k === MD.filter ? `<button role="tab" aria-selected="${MD.filter === k}" data-filter="${k}">${label} <span>${fmtNum(n)}</span></button>` : "";
   }).join("");
-  const meter = $("#mdMeter");
-  meter.firstElementChild.style.width = `${total ? (described / total) * 100 : 0}%`;
-  meter.setAttribute("aria-valuemax", String(total)); meter.setAttribute("aria-valuenow", String(described));
-  meter.classList.toggle("done", total > 0 && described === total);
-  $("#mdSummary").textContent = `${described} of ${total} described` + (manualOnly ? ` · ${manualOnly} to type by hand` : "");
-  const btn = $("#mdDescribe"), run = MD.run;
-  btn.disabled = run ? run.stop : !missing;
+  const run = MD.run, meter = $("#mdMeter");
+  // While describing, the bar follows the run; otherwise the whole library.
+  const [now, max] = run ? [run.done, run.total] : [described, total];
+  meter.firstElementChild.style.width = `${max ? (now / max) * 100 : 0}%`;
+  meter.setAttribute("aria-label", run ? "Describing" : "Described");
+  meter.setAttribute("aria-valuemax", String(max)); meter.setAttribute("aria-valuenow", String(now));
+  meter.classList.toggle("done", !run && total > 0 && described === total);
+  meter.classList.toggle("running", !!run);
+  $("#mdProgress").classList.toggle("running", !!run);
+  const todo = mdTodo().length;
+  if (run) $("#mdSummary").textContent = mdRunText(run);
+  else {
+    const last = MD.lastRun;
+    $("#mdSummary").textContent = `${fmtNum(described)} of ${fmtNum(total)} described` + (manualOnly ? ` · ${fmtNum(manualOnly)} to type by hand` : "")
+      + (last ? ` · last run: ${fmtNum(last.ok)} described${last.failed ? `, ${fmtNum(last.failed)} failed` : ""}${last.left ? `, stopped with ${fmtNum(last.left)} left` : ""}` : "");
+  }
+  const btn = $("#mdDescribe");
+  btn.disabled = run ? run.stop : !todo;
   btn.classList.toggle("primary", !run);
-  btn.querySelector("span").textContent = run ? (run.stop ? "Stopping…" : `Stop · ${run.done}/${run.total}`) : missing ? `Describe ${missing} with AI` : "All described";
+  btn.title = run ? "Stop after the descriptions in progress" : todo ? "Describes the shown items that have no description yet, top to bottom" : "";
+  btn.querySelector("span").textContent = run ? (run.stop ? "Stopping…" : `Stop · ${fmtNum(run.done)}/${fmtNum(run.total)}`) : todo ? `Describe ${fmtNum(todo)} with AI` : "Nothing to describe here";
+}
+const fmtDur = s => s >= 5400 ? `${Math.round(s / 3600)} h` : s >= 90 ? `${Math.round(s / 60)} min` : `${Math.max(1, Math.round(s))} s`;
+// "Describing 120 of 1,234 · 2 failed · 3.1/s · about 6 min left"
+function mdRunText(run) {
+  if (run.stop) return `Stopping: finishing ${run.active} in progress…`;
+  const secs = (performance.now() - run.started) / 1000, rate = run.done / secs;
+  const left = run.total - run.done;
+  let t = `Describing ${fmtNum(Math.min(run.done + run.active, run.total))} of ${fmtNum(run.total)}`;
+  if (run.failed.length) t += ` · ${fmtNum(run.failed.length)} failed`;
+  if (run.done >= 3 && rate > 0) t += ` · ${rate >= 1 ? rate.toFixed(1) + "/s" : Math.round(rate * 60) + "/min"} · about ${fmtDur(left / rate)} left`;
+  return t;
 }
 function renderMedia() {
   renderMediaHeader();
@@ -1343,7 +1559,7 @@ function renderMedia() {
   const more = list.length - MD.shown;
   $("#mdGrid").innerHTML = list.length
     ? list.slice(0, MD.shown).map(mdCard).join("") + (more > 0 ? `<button type="button" class="btn md-more" data-md-more>Show ${Math.min(more, MD_PAGE)} more of ${more}</button>` : "")
-    : `<div class="md-empty muted">${MD.query ? `Nothing matches “${esc(MD.query)}”.` : MD.filter === "missing" ? "Everything is described." : "Nothing here."}</div>`;
+    : `<div class="md-empty muted">${MD.query ? `Nothing matches “${esc(MD.query)}”.` : MD.filter === "missing" ? "Everything here is described." : MD.minUses > 1 ? `Nothing used ${MD.minUses}+ times here.` : "Nothing here."}</div>`;
   mdObserve();
 }
 // Replaces one card in place (keeps scroll, focus elsewhere and other videos).
@@ -1368,7 +1584,7 @@ const MD_PARALLEL = 4;
 function runDescribe(ids, force) {
   const fresh = ids.filter(id => !MD.busy.has(id));
   if (!fresh.length) return;
-  const run = MD.run ??= { queue: [], total: 0, done: 0, ok: 0, failed: [], active: 0, stop: false };
+  const run = MD.run ??= { queue: [], total: 0, done: 0, ok: 0, failed: [], active: 0, stop: false, started: performance.now(), exportId: MD.exportId };
   for (const id of fresh) { MD.busy.add(id); run.queue.push({ id, force }); }
   run.total += fresh.length;
   renderMediaHeader(); fresh.forEach(updateMediaCard);
@@ -1379,9 +1595,9 @@ async function mdWorker(run) {
   while (run.queue.length && !run.stop) {
     const { id, force } = run.queue.shift();
     try {
-      const r = await api(`/api/exports/${MD.exportId}/describe`, { method: "POST", body: { ids: [id], force } });
+      const r = await api(`/api/exports/${run.exportId}/describe`, { method: "POST", body: { ids: [id], force } });
       const d = r.items?.[id];
-      if (d != null) { const it = mdItem(id); if (it) it.description = d; run.ok++; }
+      if (d != null) { const it = MD.exportId === run.exportId && mdItem(id); if (it) it.description = d; run.ok++; }
       else if (r.failed?.length) run.failed.push(r.failed[0].replace(/^[\w-]+: /, ""));
     } catch (e) { run.failed.push(e.message); }
     run.done++; MD.busy.delete(id);
@@ -1400,11 +1616,12 @@ function mdStopRun(run) {
 }
 function mdFinishRun(run) {
   if (MD.run === run) MD.run = null;
+  MD.lastRun = { ok: run.ok, failed: run.failed.length, left: run.total - run.done, exportId: run.exportId };
   if ($("#mediaDlg").open) renderMediaHeader();
   const skipped = run.total - run.done;
   const what = `Described ${run.ok} of ${run.total}`;
   if (run.failed.length) errorToast(`${what}, ${run.failed.length} failed${skipped ? `, ${skipped} skipped` : ""}. ${run.failed[0]}`);
-  else if (skipped) toast(`${what}, stopped`);
+  else if (skipped) toast(`${what}, stopped. Describe again to continue with the rest.`);
   else if (run.total > 1 || !run.ok) toast(run.ok ? what : "Nothing to describe");
   loadState().catch(() => { });
 }
@@ -1424,16 +1641,18 @@ $("#mdGrid").addEventListener("pointerover", e => { if (e.pointerType === "mouse
 $("#mdGrid").addEventListener("pointerout", e => { const a = e.target.closest?.(".md-open"); if (a && !a.contains(e.relatedTarget)) mdPreview(mdVideoOf(a), false); });
 $("#mdGrid").addEventListener("focusin", e => mdPreview(mdVideoOf(e.target), true));
 $("#mdGrid").addEventListener("focusout", e => mdPreview(mdVideoOf(e.target), false));
+$("#mdSort").onchange = e => { MD.sort = e.target.value; localStorage.setItem("iroof:md-sort", MD.sort); MD.shown = 0; renderMedia(); $("#mdGrid").scrollTop = 0; };
+$("#mdMinUses").onchange = e => { MD.minUses = Number(e.target.value) || 1; localStorage.setItem("iroof:md-min-uses", String(MD.minUses)); MD.shown = 0; renderMedia(); $("#mdGrid").scrollTop = 0; };
 $("#mdFilters").onclick = e => { const b = e.target.closest("[data-filter]"); if (b) { MD.filter = b.dataset.filter; MD.shown = 0; renderMedia(); $("#mdGrid").scrollTop = 0; } };
 let mdSearchTimer;
 $("#mdSearch").addEventListener("input", e => { clearTimeout(mdSearchTimer); mdSearchTimer = setTimeout(() => { MD.query = e.target.value; MD.shown = 0; renderMedia(); }, 150); });
 $("#mdDescribe").onclick = async () => {
   if (MD.run) { mdStopRun(MD.run); return; }
-  const ids = MD.items.filter(i => !i.description && i.describable).map(i => i.id);
+  const ids = mdTodo().map(i => i.id);
   if (!ids.length) return;
   if (!await confirmDialog({
-    title: `Describe ${ids.length} item${ids.length > 1 ? "s" : ""} with AI?`,
-    text: `The images and voice messages are sent to the media model from Settings, one request each, which costs tokens. The descriptions are saved with this export and used by all its chats. You can edit them afterwards.`,
+    title: `Describe ${fmtNum(ids.length)} item${ids.length > 1 ? "s" : ""} with AI?`,
+    text: `They go in the order shown (${$("#mdSort").selectedOptions[0].text.toLowerCase()}), ${MD_PARALLEL} at a time, to the media model from Settings: one request each, which costs tokens. Each description is saved as soon as it arrives, so you can stop at any time and continue later with the rest. Descriptions are used by all chats of this export and can be edited.`,
     ok: "Describe", icon: "sparkle",
   })) return;
   runDescribe(ids, false);

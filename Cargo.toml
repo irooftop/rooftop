@@ -44,6 +44,9 @@ tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
 uuid = { version = "1.28.0", features = ["v4"] }
 zip = { version = "9.0.5", default-features = false, features = ["deflate"] }
 
+[target.'cfg(unix)'.dependencies]
+libc = "0.2.191"
+
 [dev-dependencies]
 tempfile = "3.27.0"
 

@@ -80,8 +80,7 @@
 </svg>
 <section class="home hidden" id="home" aria-labelledby="homeTitle" data-tauri-drag-region="deep">
   <div class="home-inner">
-    <svg class="scene" viewBox="0 0 710 500" role="img" aria-labelledby="sceneTitle" fill="currentColor">
-  <title id="sceneTitle">Someone sits on a sloped roof by the chimney, hugging their knees and looking up at the moon and the stars</title>
+    <svg class="scene" viewBox="0 0 710 500" role="img" aria-label="Someone sits on a sloped roof by the chimney, hugging their knees and looking up at the moon and the stars" fill="currentColor">
   <g class="stars">
     <path class="tw t1" d="M70 59Q71.98 68.02 81 70Q71.98 71.98 70 81Q68.02 71.98 59 70Q68.02 68.02 70 59Z"/>
     <path class="tw t3" d="M352 38Q353.44 44.56 360 46Q353.44 47.44 352 54Q350.56 47.44 344 46Q350.56 44.56 352 38Z"/>
@@ -135,7 +134,7 @@ c-46 -3 -74 48 -45 83 4 5 3 5 -5 1z"/></g>
     <header class="side-head" data-tauri-drag-region="deep">
       <button class="brand" id="brandBtn" title="Back to the roof" aria-label="iRoof.top: back to the roof"><span class="logo" aria-hidden="true"></span><span class="wordmark">i<span class="amp">&amp;</span>roof.top</span></button>
       <div class="head-actions">
-        <button class="offline-badge hidden" id="offlineBadge" title="Offline mode: only local models, nothing leaves this computer" aria-label="Offline mode is on. Open Settings"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-lock"></use></svg>Offline</button>
+        <button class="offline-badge hidden" id="offlineBadge" title="Offline mode: only local models, nothing leaves this computer" aria-label="Offline mode is on. Open Settings"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-lock"></use></svg><span class="ob-text">Offline</span></button>
         <button class="icon-btn" id="themeBtn" title="Theme: auto" aria-label="Toggle theme"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-auto"></use></svg></button>
         <button class="icon-btn" id="settingsBtn" title="Settings" aria-label="Settings"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-settings"></use></svg></button>
       </div>
@@ -360,7 +359,7 @@ c-46 -3 -74 48 -45 83 4 5 3 5 -5 1z"/></g>
       <div class="field">
         <div class="field-head"><label for="sBudget">History budget, chars</label><button type="button" class="info-btn" aria-label="About: History budget, chars" aria-expanded="false" aria-controls="hBudget"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-info"></use></svg></button></div>
         <input id="sBudget" type="number" min="4000" step="1000">
-        <div class="help" id="hBudget" hidden>How much of the chat (in characters, ≈ 3–4 per token) is replayed to the model. When it is exceeded, the oldest part is folded into a short memory summary once, keeping the prompt cache stable. Older messages stay searchable.</div>
+        <div class="help" id="hBudget" hidden>How much of the chat (in characters, ≈ 3–4 per token) is replayed to the model. When it is exceeded, the oldest part is folded into a short memory summary once, keeping the prompt cache stable. Older messages stay searchable. It is measured in characters rather than messages because context limits and prices are in tokens: 120,000 ≈ 34k tokens. Keep it well below the model's context window.</div>
       </div>
       <div class="field">
         <div class="field-head"><label for="sMediaModel">Media model</label><button type="button" class="info-btn" aria-label="About: Media model" aria-expanded="false" aria-controls="hMediaModel"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-info"></use></svg></button></div>
@@ -373,6 +372,7 @@ c-46 -3 -74 48 -45 83 4 5 3 5 -5 1z"/></g>
         <div class="help" id="hSteps" hidden>How many LLM rounds one answer may take (e.g. search history, then call an MCP tool, then reply). Higher allows more tool use but costs more.</div>
       </div>
     </div>
+    <p class="env-note muted small hidden" id="sEnvNote" role="note"></p>
     <div class="field tg-settings">
       <div class="field-head"><span class="legend" id="sTgL">Telegram</span><button type="button" class="info-btn" aria-label="About: Telegram" aria-expanded="false" aria-controls="hTgS"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-info"></use></svg></button></div>
       <div class="help" id="hTgS" hidden>Share links can post visitor messages to a Telegram group. There you press <b>Reply</b> and answer yourself, or let the AI answer when a countdown ends. <b>Shared bot</b> needs no setup: the <span class="tg-relay-host">iroof.top</span> bot relays the messages for you, so they pass through <span class="tg-relay-host">iroof.top</span>. <b>Own bot</b>: create one with <a href="https://t.me/BotFather" target="_blank" rel="noopener noreferrer">@BotFather</a> and paste its token, and messages go straight between this app and Telegram. A bot token works in one app at a time.</div>
@@ -586,6 +586,7 @@ c-46 -3 -74 48 -45 83 4 5 3 5 -5 1z"/></g>
       <button class="btn" id="promptCopy"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-copy"></use></svg><span>Copy</span></button>
       <button class="btn" id="promptDownload"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-download"></use></svg><span>Download JSON</span></button>
       <span class="spacer"></span>
+      <button class="btn" id="promptBudget" title="How much of the chat is sent to the model: Settings → History budget"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-settings"></use></svg><span>History budget…</span></button>
       <button class="btn primary" data-close>Close</button>
     </div>
   </div>
@@ -622,10 +623,27 @@ c-46 -3 -74 48 -45 83 4 5 3 5 -5 1z"/></g>
     <div class="help" id="hMedia" hidden>The model cannot see pictures or hear audio: in the history a sticker is just <code>&lt;sticker stk_…&gt;</code>. A one-line description per sticker, GIF and photo, and a transcript per voice message, tell it what each one shows or says, so it understands what was sent and answers the same way. <b>Describe with AI</b> sends the images and voice messages to the media model from Settings (it must accept images and audio). You can also write or correct descriptions by hand. Descriptions are saved with the export and used by all its chats.</div>
     <div class="md-bar">
       <label class="md-search"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-search"></use></svg><input type="search" id="mdSearch" placeholder="Search descriptions or ids" autocomplete="off" spellcheck="false" aria-label="Search the media library"></label>
+      <select id="mdSort" aria-label="Sort" title="Order of the list, and of Describe with AI">
+        <option value="uses">Most used first</option>
+        <option value="rare">Least used first</option>
+        <option value="recent">Recently used first</option>
+        <option value="first">Earliest used first</option>
+      </select>
+      <select id="mdMinUses" aria-label="How often it is used" title="Hide items used fewer times">
+        <option value="1">Any use count</option>
+        <option value="2">Used 2+ times</option>
+        <option value="3">Used 3+ times</option>
+        <option value="5">Used 5+ times</option>
+        <option value="10">Used 10+ times</option>
+        <option value="25">Used 25+ times</option>
+      </select>
       <button class="btn primary" id="mdDescribe"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-sparkle"></use></svg><span>Describe with AI</span></button>
     </div>
     <div class="md-filters" role="tablist" aria-label="Filter" id="mdFilters"></div>
-    <div class="md-progress" id="mdProgress"><div class="md-meter" role="progressbar" aria-label="Described" aria-valuemin="0" id="mdMeter"><div></div></div><span class="muted small" id="mdSummary"></span></div>
+    <div class="md-progress" id="mdProgress">
+      <div class="md-meter" role="progressbar" aria-label="Described" aria-valuemin="0" id="mdMeter"><div></div></div>
+      <span class="muted small md-summary" id="mdSummary" aria-live="polite"></span>
+    </div>
     <div class="md-grid" id="mdGrid" role="list"></div>
   </div>
 </dialog>

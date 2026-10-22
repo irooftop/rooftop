@@ -1654,6 +1654,7 @@ dependencies = [
  "getrandom 0.4.3",
  "hex",
  "if-addrs",
+ "libc",
  "mime_guess",
  "percent-encoding",
  "qrcode",
