@@ -39,18 +39,28 @@ touches `docs/`. `demo.svg` is built by `python3 scripts/demo-svg.py` (plain SVG
 ## Releasing
 
 ```
- bump Cargo.toml ─▶ tag vX.Y.Z ─┬─▶ Release: crates.io + ghcr.io image
-                                └─▶ desktop: installers ─▶ draft GitHub Release
-                                                              │ publish
-                                                              ▼
-                                                  Homebrew: formula + cask
+ bump Cargo.toml ─▶ tag vX.Y.Z ─┬─▶ Release: crates.io + ghcr.io image (amd64 + arm64, native runners)
+                                └─▶ desktop: installers ─▶ publish release (latest) ─▶ Homebrew: formula + cask
 ```
 
 1. Bump `version` in `Cargo.toml` (and `desktop/`), commit, push a tag `vX.Y.Z`. The tag must be numeric for the
-   Windows MSI.
-2. *Release* publishes the crate (secret `CARGO_REGISTRY_TOKEN`, environment `crates-io`) and the Docker image.
-   Run it by hand with `dry_run` to check publishing.
-3. *desktop* builds installers for macOS (arm64, x64), Windows and Linux into a **draft** release.
-4. Publishing the release runs *Homebrew*, which pushes `Formula/rooftop.rb` and `Casks/irooftop.rb` to
-   [`irooftop/homebrew-tap`](https://github.com/irooftop/homebrew-tap) (secret `HOMEBREW_TAP_TOKEN` or
-   `HOMEBREW_TAP_DEPLOY_KEY`; without one it skips). `scripts/homebrew-tap.sh vX.Y.Z <tap checkout>` does the same by hand.
+   Windows MSI. Everything below then runs without further clicks.
+2. *Release* publishes the crate (secret `CARGO_REGISTRY_TOKEN`, environment `crates-io`) and the Docker image:
+   one job per architecture on a native runner (`ubuntu-latest`, `ubuntu-24.04-arm`) pushes by digest, and a
+   `merge` job creates the multi-arch tags. Run it by hand with `dry_run` to check crate publishing.
+3. *desktop* builds installers for macOS (arm64, x64), Windows and Linux into a draft release. When all of them
+   are attached, its `publish` job fills in generated release notes, publishes the release and marks it latest.
+4. Its `homebrew` job then calls *Homebrew*, which pushes `Formula/rooftop.rb` and `Casks/irooftop.rb` to
+   [`irooftop/homebrew-tap`](https://github.com/irooftop/homebrew-tap). It needs the secret `HOMEBREW_TAP_TOKEN`
+   (fine-grained token, `irooftop/homebrew-tap`, Contents: read and write) or `HOMEBREW_TAP_DEPLOY_KEY`; without
+   one it skips with a notice. (A release published by `GITHUB_TOKEN` does not fire `release: published`, which is
+   why the call is explicit; publishing a release by hand still triggers Homebrew through that event.)
+
+Rerun the tap update for an existing tag, for example after adding the secret:
+
+```sh
+gh workflow run homebrew.yml -f tag=v0.3.0
+```
+
+`scripts/homebrew-tap.sh vX.Y.Z <tap checkout>` renders the same files locally. If the installers of a tag
+failed, rerun the failed *desktop* jobs: `publish` and `homebrew` follow once they pass.

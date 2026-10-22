@@ -2,7 +2,8 @@
 #
 #  * push to main / pull requests touching the desktop app or the library: `cargo check` on Linux.
 #  * tag `vX.Y.Z` (or manual run): build installers for macOS (arm64 + x64), Windows and Linux and
-#    attach them to a DRAFT GitHub Release for that tag. Manual runs only upload workflow artifacts.
+#    attach them to a draft GitHub Release for that tag, then publish it (as latest) and update the
+#    Homebrew tap. Manual runs only upload workflow artifacts.
 #
 # The release job drives the pinned Tauri CLI (desktop/package.json) directly and uploads with `gh`,
 # instead of tauri-apps/tauri-action, because the action's support for the Tauri 3 alpha CLI is not documented.
@@ -53,7 +54,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y $LINUX_DEPS
       - uses: dtolnay/rust-toolchain@stable
-      - uses: swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@v2
         with:
           workspaces: desktop -> target
       - name: cargo check (desktop)
@@ -89,7 +90,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y $LINUX_DEPS
 
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@v7
         with:
           node-version: lts/*
           cache: npm
@@ -99,7 +100,7 @@ jobs:
         with:
           targets: ${{ matrix.target }}
 
-      - uses: swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@v2
         with:
           workspaces: desktop -> target
           key: ${{ matrix.target }}
@@ -150,7 +151,7 @@ jobs:
           ls -la dist-out
           test -n "$(ls -A dist-out)"
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: installers-${{ matrix.os }}-${{ matrix.target || 'native' }}
           path: dist-out/*
@@ -167,3 +168,34 @@ jobs:
             --notes "Desktop installers (unsigned unless signing secrets are configured)." \
             || gh release view "$TAG" >/dev/null
           gh release upload "$TAG" dist-out/* --clobber
+
+  # Every installer is attached: publish the release (as latest, with generated notes) ...
+  publish:
+    if: ${{ startsWith(github.ref, 'refs/tags/') }}
+    needs: release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      TAG: ${{ github.ref_name }}
+    steps:
+      - name: Publish the release
+        run: |
+          body=$(gh release view "$TAG" -R "$GITHUB_REPOSITORY" --json body --jq .body)
+          if [[ "$body" == "Desktop installers"* ]]; then # still the placeholder: use generated notes
+            gh api -X POST "repos/$GITHUB_REPOSITORY/releases/generate-notes" -f tag_name="$TAG" --jq .body > notes.md
+            gh release edit "$TAG" -R "$GITHUB_REPOSITORY" --notes-file notes.md
+          fi
+          gh release edit "$TAG" -R "$GITHUB_REPOSITORY" --draft=false --latest --verify-tag
+
+  # ... then update the tap. Called from here because a release published with GITHUB_TOKEN
+  # does not trigger the `release: published` event of homebrew.yml.
+  homebrew:
+    needs: publish
+    permissions:
+      contents: read
+    uses: ./.github/workflows/homebrew.yml
+    with:
+      tag: ${{ github.ref_name }}
+    secrets: inherit
