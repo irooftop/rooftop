@@ -45,6 +45,8 @@ pub struct Settings {
     pub telegram: TelegramSettings,
     /// Where share links can be opened besides this device (desktop / local server).
     pub sharing: SharingSettings,
+    /// Offline mode: only local models, nothing leaves this computer (`ROOFTOP_OFFLINE` / `--offline` force it on).
+    pub offline: bool,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -93,6 +95,7 @@ impl Default for Settings {
             mcp_servers: McpConfig::new(),
             telegram: TelegramSettings::default(),
             sharing: SharingSettings::default(),
+            offline: false,
         }
     }
 }

@@ -39,6 +39,7 @@ export default defineConfig({
         text: "Guide",
         items: [
           { text: "Getting started", link: "/guide/getting-started" },
+          { text: "Offline & privacy", link: "/guide/offline" },
           { text: "Export a chat", link: "/guide/export" },
           { text: "Desktop app", link: "/guide/desktop" },
           { text: "Docker & servers", link: "/guide/docker" },

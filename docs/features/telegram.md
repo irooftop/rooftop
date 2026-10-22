@@ -32,6 +32,11 @@ With the shared bot the link carries a one-time code, valid for an hour, that ti
 Finally pick the group under **Telegram group** in a share link, and set after how many seconds the AI answers
 (`0` = only when you press **AI reply**).
 
+::: tip Privacy
+Only new visitor messages and the AI's answers are posted to the group, never the exported history. Offline mode turns
+the bot off. Details: [Offline & privacy](../guide/offline#the-telegram-bot).
+:::
+
 ::: tip No public address needed
 Both kinds of bot use long polling, so this works from a laptop. A bot token works in one app at a time.
 :::

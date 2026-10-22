@@ -17,9 +17,16 @@ their words, bubbles, stickers, GIFs, reactions and voice.
 **[Documentation](https://irooftop.github.io/rooftop)** ·
 [Getting started](https://irooftop.github.io/rooftop/guide/getting-started) ·
 [Share links](https://irooftop.github.io/rooftop/features/share-links) ·
+[Offline & privacy](https://irooftop.github.io/rooftop/guide/offline) ·
 [Configuration](https://irooftop.github.io/rooftop/reference/configuration)
 
 </div>
+
+## Private by design · runs offline
+
+Importing never touches the network. With a local model (Ollama, LM Studio, llama.cpp) and **Offline mode** on (`--offline` or
+`ROOFTOP_OFFLINE=1`, or the Settings switch), the app refuses every request to a non-local endpoint, and starts no
+internet relay and no Telegram bot. Nothing leaves your computer. Details: [Offline & privacy](https://irooftop.github.io/rooftop/guide/offline).
 
 ## Install
 

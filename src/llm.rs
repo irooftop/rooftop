@@ -4,6 +4,8 @@
 use anyhow::{Context, Result, anyhow, bail};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -14,6 +16,23 @@ pub struct LlmConfig {
     pub model: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub temperature: Option<f32>,
+}
+
+impl LlmConfig {
+    /// Defaults from the environment: `OPENAI_BASE_URL`, `OPENAI_API_KEY`, `OPENAI_MODEL`, `OPENAI_TEMPERATURE`.
+    pub fn from_env() -> Self {
+        Self {
+            base_url: std::env::var("OPENAI_BASE_URL").unwrap_or_else(|_| "https://openrouter.ai/api/v1".into()),
+            api_key: std::env::var("OPENAI_API_KEY").unwrap_or_default(),
+            model: std::env::var("OPENAI_MODEL").unwrap_or_else(|_| "openai/gpt-6-luna".into()),
+            temperature: std::env::var("OPENAI_TEMPERATURE").ok().and_then(|t| t.parse().ok()),
+        }
+    }
+}
+
+/// Whether `ROOFTOP_OFFLINE` asks for Offline mode (`1`, `true`, `yes`, `on`).
+pub fn offline_from_env() -> bool {
+    std::env::var("ROOFTOP_OFFLINE").is_ok_and(|v| matches!(v.trim().to_ascii_lowercase().as_str(), "1" | "true" | "yes" | "on"))
 }
 
 #[derive(Debug, Clone, Default)]
@@ -49,6 +68,8 @@ pub fn parse_usage(v: &Value) -> Option<crate::chat::Usage> {
 #[derive(Clone)]
 pub struct LlmClient {
     http: reqwest::Client,
+    /// Offline mode: only local endpoints are contacted (shared with the app state).
+    offline: Arc<AtomicBool>,
 }
 
 impl Default for LlmClient {
@@ -68,17 +89,39 @@ pub fn ensure_crypto_provider() {
 impl LlmClient {
     pub fn new() -> Self {
         ensure_crypto_provider();
+        let offline = Arc::new(AtomicBool::new(false));
+        // In Offline mode a redirect must not lead away from the local network either.
+        let flag = offline.clone();
+        let redirects = reqwest::redirect::Policy::custom(move |a| {
+            if a.previous().len() >= 10 {
+                a.error("too many redirects")
+            } else if flag.load(Ordering::Relaxed) && !is_local(a.url().as_str()) {
+                let msg = format!("Offline mode: redirected to {}, which is not a local endpoint", origin_of(a.url().as_str()));
+                a.error(msg)
+            } else {
+                a.follow()
+            }
+        });
         let http = reqwest::Client::builder()
             .timeout(Duration::from_secs(180))
             .connect_timeout(Duration::from_secs(20))
+            .redirect(redirects)
             .build()
             .expect("http client");
-        Self { http }
+        Self { http, offline }
+    }
+
+    /// The Offline mode switch, shared with whoever owns the setting.
+    pub fn offline_flag(&self) -> Arc<AtomicBool> {
+        self.offline.clone()
     }
 
     pub async fn complete(&self, cfg: &LlmConfig, messages: &[Value], tools: &[Value]) -> Result<Completion> {
         if cfg.base_url.trim().is_empty() || cfg.model.trim().is_empty() {
             bail!("LLM is not configured: set the base URL and model in Settings (or OPENAI_BASE_URL / OPENAI_MODEL)");
+        }
+        if self.offline.load(Ordering::Relaxed) {
+            offline_check(&cfg.base_url)?;
         }
         let url = format!("{}/chat/completions", cfg.base_url.trim_end_matches('/'));
         let mut body = json!({"model": cfg.model, "messages": messages});
@@ -151,15 +194,44 @@ pub fn host_of(base_url: &str) -> String {
     reqwest::Url::parse(base_url.trim()).ok().and_then(|u| u.host_str().map(String::from)).unwrap_or_else(|| base_url.trim().to_string())
 }
 
-/// Endpoints that usually run without a key: Ollama, LM Studio, vLLM on this machine or the LAN.
+/// Whether an endpoint is on this computer or this network: no key is needed, and Offline mode allows it.
+///
+/// Local: `localhost`, loopback (127.0.0.0/8, ::1), private LAN ranges (10/8, 172.16/12, 192.168/16, fc00::/7),
+/// link-local (169.254/16, fe80::/10), `*.local` (mDNS) and `*.internal` (e.g. `host.docker.internal`).
+/// Names are judged by their spelling, they are not resolved.
 pub fn is_local(base_url: &str) -> bool {
     let Ok(u) = reqwest::Url::parse(base_url.trim()) else { return false };
     let Some(host) = u.host_str() else { return false };
     match host.trim_start_matches('[').trim_end_matches(']').parse::<std::net::IpAddr>() {
-        Ok(std::net::IpAddr::V4(ip)) => ip.is_loopback() || ip.is_private() || ip.is_unspecified(),
-        Ok(std::net::IpAddr::V6(ip)) => ip.is_loopback(),
-        Err(_) => host == "localhost" || host.ends_with(".localhost") || host.ends_with(".local") || host.ends_with(".internal"),
+        Ok(std::net::IpAddr::V4(ip)) => ip.is_loopback() || ip.is_private() || ip.is_link_local() || ip.is_unspecified(),
+        Ok(std::net::IpAddr::V6(ip)) => {
+            let seg = ip.segments()[0];
+            ip.is_loopback() || ip.is_unspecified() || (seg & 0xfe00) == 0xfc00 || (seg & 0xffc0) == 0xfe80
+        }
+        Err(_) => {
+            let host = host.to_ascii_lowercase();
+            host == "localhost" || host.ends_with(".localhost") || host.ends_with(".local") || host.ends_with(".internal")
+        }
     }
+}
+
+/// `scheme://host[:port]` of a URL, for messages.
+pub fn origin_of(url: &str) -> String {
+    match reqwest::Url::parse(url.trim()) {
+        Ok(u) => u.origin().ascii_serialization(),
+        Err(_) => url.trim().to_string(),
+    }
+}
+
+/// Offline mode: `Err` with the reason unless the endpoint is local.
+pub fn offline_check(url: &str) -> Result<()> {
+    if is_local(url) {
+        return Ok(());
+    }
+    bail!(
+        "Offline mode: {} is not a local endpoint. Use a model on this computer or network (Ollama, LM Studio), or turn Offline mode off in Settings.",
+        origin_of(url)
+    )
 }
 
 /// The provider's own error text (`error.message` of an OpenAI-style body), else the raw body.
@@ -229,6 +301,51 @@ mod tests {
             LlmConfig { base_url: "https://openrouter.ai/api/v1".into(), api_key: String::new(), model: "m".into(), temperature: None };
         let e = LlmClient::new().complete(&cfg, &[json!({"role": "user", "content": "hi"})], &[]).await.unwrap_err().to_string();
         assert!(e.starts_with("No API key is set for openrouter.ai. Add your key in Settings"), "{e}");
+    }
+
+    #[test]
+    fn local_hosts() {
+        for u in [
+            "http://localhost:11434/v1",
+            "http://LocalHost/v1",
+            "http://127.0.0.1:1234/v1",
+            "http://127.9.9.9/v1",
+            "http://[::1]:8080/v1",
+            "http://10.0.0.7/v1",
+            "http://172.16.0.1/v1",
+            "http://172.31.255.1/v1",
+            "http://192.168.1.5:8000/v1",
+            "http://169.254.1.1/v1",
+            "http://[fd12:3456::1]/v1",
+            "http://[fe80::1]/v1",
+            "http://studio.local:11434/v1",
+            "http://host.docker.internal:11434/v1",
+        ] {
+            assert!(is_local(u), "{u} should be local");
+        }
+        for u in [
+            "https://openrouter.ai/api/v1",
+            "https://api.openai.com/v1",
+            "http://8.8.8.8/v1",
+            "http://172.32.0.1/v1",
+            "http://172.15.0.1/v1",
+            "http://[2606:4700::1111]/v1",
+            "http://localhost.example.com/v1",
+            "http://notlocal/v1",
+            "not a url",
+            "",
+        ] {
+            assert!(!is_local(u), "{u} should not be local");
+        }
+    }
+
+    #[tokio::test]
+    async fn offline_refuses_remote_endpoints_without_a_request() {
+        let client = LlmClient::new();
+        client.offline_flag().store(true, Ordering::Relaxed);
+        let cfg = LlmConfig { base_url: "https://openrouter.ai/api/v1".into(), api_key: "k".into(), model: "m".into(), temperature: None };
+        let e = client.complete(&cfg, &[json!({"role": "user", "content": "hi"})], &[]).await.unwrap_err().to_string();
+        assert!(e.starts_with("Offline mode: https://openrouter.ai is not a local endpoint"), "{e}");
     }
 
     #[test]
