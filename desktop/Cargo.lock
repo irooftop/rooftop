@@ -3110,7 +3110,7 @@ dependencies = [
 
 [[package]]
 name = "rooftop"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "anyhow",
  "argon2",
@@ -3145,7 +3145,7 @@ dependencies = [
 
 [[package]]
 name = "rooftop-desktop"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "anyhow",
  "axum",

@@ -1,0 +1,21 @@
+/* iRoof.top colors: Telegram blue, the app's own accent. */
+:root {
+  --vp-c-brand-1: #2a7fd4;
+  --vp-c-brand-2: #3390ec;
+  --vp-c-brand-3: #3390ec;
+  --vp-c-brand-soft: rgba(51, 144, 236, .14);
+  --vp-home-hero-name-color: transparent;
+  --vp-home-hero-name-background: linear-gradient(120deg, #3390ec 20%, #6ec9cb);
+  --vp-home-hero-image-background-image: radial-gradient(circle, rgba(51, 144, 236, .28), rgba(110, 201, 203, .12) 60%, transparent 70%);
+  --vp-home-hero-image-filter: blur(56px);
+}
+.dark {
+  --vp-c-brand-1: #6ab3f3;
+  --vp-c-brand-2: #4ea2ef;
+  --vp-c-brand-3: #3390ec;
+}
+/* Wide diagrams scroll instead of squeezing. */
+.vp-doc img { border-radius: 14px; }
+.vp-doc .wide { overflow-x: auto; }
+.vp-doc .wide img { min-width: 640px; display: block; margin: 0 auto; }
+.VPHero .image-src { max-width: 340px; max-height: 340px; }

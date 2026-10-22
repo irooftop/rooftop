@@ -109,8 +109,24 @@ function confirmDialog({ title, text = "", ok = "OK", danger = false, icon: ic =
     res(yes);
   }, { once: true }));
 }
-// Light-dismiss for dialogs: a click on the backdrop closes them.
-document.addEventListener("click", e => { if (e.target instanceof HTMLDialogElement && e.target.open) e.target.close("cancel"); });
+// Light-dismiss for dialogs: a click on the backdrop closes them, but only when the press also started there
+// (selecting text and releasing over the backdrop doesn't count), and never over unsaved edits: then the dialog
+// gives a short nudge instead, and Cancel, Esc or the close button still discard them.
+let pressedDialog = null;
+document.addEventListener("pointerdown", e => { pressedDialog = e.target instanceof HTMLDialogElement ? e.target : null; }, true);
+document.addEventListener("click", e => {
+  const d = e.target;
+  if (!(d instanceof HTMLDialogElement) || !d.open || pressedDialog !== d) return;
+  if (!d._dirty) return d.close("cancel");
+  d.classList.remove("nudge"); void d.offsetWidth; d.classList.add("nudge");
+});
+document.addEventListener("animationend", e => { if (e.animationName === "dlg-nudge") e.target.closest("dialog")?.classList.remove("nudge"); });
+// Typing into a form of a dialog counts as an edit (search boxes and the sharing switches apply right away).
+document.addEventListener("input", e => {
+  const t = e.target; if (!t.closest?.("dialog form") || t.type === "search" || t.closest("[data-reach]")) return;
+  t.closest("dialog")._dirty = true;
+}, true);
+document.addEventListener("close", e => { if (e.target instanceof HTMLDialogElement) e.target._dirty = false; }, true);
 // Info buttons show their help text in a floating tooltip: nothing in the layout moves.
 // Click/tap pins it. On devices with a mouse, hovering previews it.
 const TIP = { btn: null, pinned: false, timer: 0 };
@@ -936,61 +952,124 @@ $("#settingsBtn").onclick = async () => {
   } catch (e) { toast(e.message, { error: true }); }
 };
 // Telegram: the mode applies right away (no Save needed), and the status follows the bot.
-const TG = { env: false, mode: "off", relayHost: "iroof.top", link: null, poll: null, busy: false };
+const TG = { env: false, mode: "off", relayHost: "iroof.top", poll: null, busy: false, last: null, sig: null };
+const TG_TOKEN_HINT = `Create a bot with <a href="https://t.me/BotFather" target="_blank" rel="noopener noreferrer">@BotFather</a>, paste its token above and press <b>Connect</b>.`;
 function openTgSettings(t) {
-  TG.env = !!t.env; TG.mode = t.mode || "off"; TG.relayHost = t.relay_host || "iroof.top"; TG.link = null;
+  TG.env = !!t.env; TG.mode = t.mode || "off"; TG.relayHost = t.relay_host || "iroof.top"; TG.sig = null; TG.last = null;
   $$(".tg-relay-host").forEach(e => { e.textContent = TG.relayHost; });
   setRadio("sTgMode", TG.mode);
   $$("#sTgModes input").forEach(i => { i.disabled = TG.env; });
   $("#sTgToken").value = ""; $("#sTgToken").placeholder = t.has_token ? "•••••• (saved, paste a new token to replace it)" : "Bot token from @BotFather, 123456789:AA…";
   $("#sTgTokenRow").classList.toggle("hidden", TG.mode !== "own" || TG.env);
-  $("#sTgStatus").innerHTML = TG.mode === "off" && !TG.env ? "" : `<div class="muted small">Checking…</div>`;
+  tgNote(TG.mode === "off" && !TG.env ? "" : tgPending("Checking the bot…"));
   refreshTg();
   clearInterval(TG.poll);
   TG.poll = setInterval(() => { if (!document.hidden && (TG.mode !== "off" || TG.env)) refreshTg(); }, 3000);
 }
-$("#settingsDlg").addEventListener("close", () => { clearInterval(TG.poll); TG.poll = null; });
+$("#settingsDlg").addEventListener("close", () => { clearInterval(TG.poll); TG.poll = null; if ($("#tgAddDlg").open) $("#tgAddDlg").close(); });
+const tgPending = text => `<div class="tg-note"><span class="spin" aria-hidden="true"></span><span>${text}</span></div>`;
+function tgNote(html) { TG.sig = null; $("#sTgStatus").innerHTML = html; }
 async function refreshTg() {
   try { renderTgStatus(await api("/api/telegram")); } catch { }
 }
+// How many share links (of all chats) post to a group.
+const tgUses = id => (S.state?.shares || []).filter(x => x.telegram_chat_id === id).length;
 function renderTgStatus(t) {
+  TG.last = t;
+  tgAddProgress(t);
+  // The poll runs every few seconds: rebuild only on a change, so hover and focus stay put.
+  const sig = JSON.stringify([t, TG.mode, TG.env, (S.state?.shares || []).map(x => x.telegram_chat_id)]);
+  if (sig === TG.sig) return;
+  TG.sig = sig;
   const out = $("#sTgStatus");
   if (!t.enabled) {
-    out.innerHTML = TG.mode === "own" ? `<div class="muted small">Paste the token of your bot and press <b>Connect</b>.</div>`
-      : TG.mode === "shared" ? `<div class="tg-line err small">${esc(t.error || "The shared bot isn't available right now.")}</div>`
-        : `<div class="muted small">Off: visitors of your links talk to the AI only.</div>`;
+    out.innerHTML = TG.mode === "own" ? `<div class="tg-note">${icon("info")}<span>${TG_TOKEN_HINT}</span></div>`
+      : TG.mode === "shared" ? `<div class="tg-note err">${icon("alert")}<span>${esc(t.error || "The shared bot isn't available right now.")}</span></div>`
+        : `<div class="tg-note">${icon("info")}<span>Off: visitors of your links talk to the AI only.</span></div>`;
     return;
   }
-  const who = t.username ? `<b>@${esc(t.username)}</b>` : "the bot";
-  const state = t.error ? `<span class="dot err"></span><span class="err">${esc(t.error)}</span>`
-    : t.username ? `<span class="dot ok"></span><span>Connected as ${who}${TG.env ? " (set by TELEGRAM_BOT_TOKEN)" : ""}</span>`
-      : `<span class="dot"></span><span>Connecting…</span>`;
-  const groups = t.groups?.length ? `Groups: ${t.groups.map(g => `<b>${esc(g.title)}</b>`).join(", ")}. Pick one when you edit a share link.` : "No groups yet: add the bot to a group, then pick that group in a share link.";
-  out.innerHTML = `<div class="tg-line small">${state}</div>
-    ${t.username ? `<div class="muted small">${groups}${t.source === "shared" ? ` Messages pass through ${esc(TG.relayHost)}.` : ""}</div>
-    <div class="tg-actions"><button type="button" class="btn sm" id="sTgAdd">${icon("plus")}<span>Add to a group</span></button></div>` : ""}
-    ${TG.link ? `<div class="qr-panel"><img src="${qrSrc(TG.link)}" width="148" height="148" alt="QR code to add the bot to a group"><div class="qr-side"><div class="small">Telegram opened in your browser. Or scan this with your phone: it opens Telegram to pick the group${t.source === "shared" ? " (valid for 1 hour, once)" : ""}.</div><a class="small" href="${esc(TG.link)}" target="_blank" rel="noopener noreferrer">${esc(TG.link)}</a></div></div>` : ""}`;
+  const shared = t.source === "shared";
+  const [cls, label] = t.error ? ["err", "Error"] : t.username ? ["ok", "Connected"] : ["wait", "Connecting"];
+  const sub = shared ? `Shared iRoof.top bot · messages pass through ${esc(TG.relayHost)}`
+    : TG.env ? "Your own bot · set by TELEGRAM_BOT_TOKEN" : "Your own bot · messages go straight to Telegram";
+  const groups = t.groups || [];
+  const list = groups.length
+    ? `<ul class="tg-chats">${groups.map(g => {
+      const n = tgUses(g.id);
+      return `<li class="tg-chat">${avatarHtml(g.title, null, "sm")}<div class="grow"><div class="t">${esc(g.title)}</div><div class="muted small">${n ? `Used by ${n} share link${n > 1 ? "s" : ""}` : "Telegram group · ready for share links"}</div></div><span class="tg-chat-ok" title="Connected" aria-label="Connected">${icon("check")}</span></li>`;
+    }).join("")}</ul>`
+    : `<div class="tg-empty">${icon("users")}<div><b>No group yet</b><span>Add the bot to a Telegram group. Visitor messages arrive there, and you answer them right in the chat.</span></div></div>`;
+  out.innerHTML = `<div class="tg-card">
+    <div class="tg-bot">
+      <span class="tg-logo" aria-hidden="true">${icon("send")}</span>
+      <div class="tg-bot-text"><b>${t.username ? `@${esc(t.username)}` : "Telegram bot"}</b><span class="muted small">${sub}</span></div>
+      <span class="pill ${cls}"><span class="dot"></span>${label}</span>
+    </div>
+    ${t.error ? `<div class="tg-note err">${icon("alert")}<span>${esc(t.error)}</span></div>` : ""}
+    ${t.username ? `<div class="tg-section">
+      <div class="tg-section-head"><span class="legend">Chats</span>${groups.length ? `<span class="count">${groups.length}</span>` : ""}</div>
+      ${list}
+      <button type="button" class="btn ${groups.length ? "" : "primary"} tg-add-btn" id="sTgAdd">${icon("plus")}<span>${groups.length ? "Add to another group" : "Add to a group"}</span></button>
+    </div>` : ""}
+  </div>`;
   const add = $("#sTgAdd");
-  if (add) add.onclick = async () => {
-    add.disabled = true;
-    try {
-      const r = await api("/api/telegram/link", { method: "POST" });
-      TG.link = r.url; window.open(r.url, "_blank", "noopener");
-      renderTgStatus(t);
-    } catch (e) { toast(e.message, { error: true }); add.disabled = false; }
-  };
+  if (add) add.onclick = () => openTgAdd(add);
 }
+// "Add to a group": the t.me link (app), the same link for Telegram Web, a QR code for the phone,
+// and a live check that turns green once the bot is in a new group.
+const TA = { app: "", web: "", known: new Set() };
+// Telegram Web opens tg:// addresses passed as `tgaddr`, so the start parameter (the one-time code) survives.
+function tgWebUrl(u) {
+  try {
+    const x = new URL(u);
+    const domain = x.pathname.replace(/^\/+/, "").split("/")[0];
+    if (x.hostname !== "t.me" || !domain) return "https://web.telegram.org/k/";
+    const tg = `tg://resolve?domain=${domain}${x.search ? `&${x.search.slice(1)}` : ""}`;
+    return `https://web.telegram.org/k/#?tgaddr=${encodeURIComponent(tg)}`;
+  } catch { return "https://web.telegram.org/k/"; }
+}
+async function openTgAdd(btn) {
+  btn.disabled = true;
+  try {
+    const r = await api("/api/telegram/link", { method: "POST" });
+    const shared = TG.last?.source === "shared";
+    TA.app = r.url; TA.web = tgWebUrl(r.url);
+    TA.known = new Set((TG.last?.groups || []).map(g => g.id));
+    $("#taBot").textContent = r.username ? `@${r.username}` : "Telegram bot";
+    $("#taBotSub").textContent = shared ? "Shared iRoof.top bot" : "Your own bot";
+    $("#taQr").src = qrSrc(TA.app);
+    $("#taOpenApp").href = TA.app; $("#taOpenWeb").href = TA.web;
+    $("#taAppUrl").textContent = hostOf(TA.app); $("#taAppUrl").title = TA.app;
+    $("#taWebUrl").textContent = hostOf(TA.web); $("#taWebUrl").title = TA.web;
+    $("#taWait").className = "tg-wait";
+    $("#taWait").innerHTML = `<span class="spin" aria-hidden="true"></span><span>Waiting for the bot to join a group…${shared ? " The link works once, for 1 hour." : ""}</span>`;
+    $("#tgAddDlg").showModal();
+  } catch (e) { toast(e.message, { error: true }); }
+  finally { btn.disabled = false; }
+}
+function tgAddProgress(t) {
+  if (!$("#tgAddDlg").open) return;
+  const added = (t.groups || []).filter(g => !TA.known.has(g.id));
+  if (!added.length) return;
+  added.forEach(g => TA.known.add(g.id));
+  $("#taWait").className = "tg-wait ok";
+  $("#taWait").innerHTML = `${icon("check")}<span>Added to <b>${added.map(g => esc(g.title)).join("</b>, <b>")}</b>. Pick it under <b>Telegram group</b> in a share link.</span>`;
+}
+$("#tgAddDlg").addEventListener("click", e => {
+  const b = e.target.closest("[data-ta-copy]");
+  if (b) copyWithFeedback(b, b.dataset.taCopy === "web" ? TA.web : TA.app, "Copied");
+});
 async function setTg(body) {
   if (TG.busy) return;
   TG.busy = true; $("#sTgConnect").disabled = true;
-  $("#sTgStatus").innerHTML = `<div class="muted small">${body.mode === "off" ? "Turning off…" : "Connecting…"}</div>`;
+  tgNote(tgPending(body.mode === "off" ? "Turning off…" : "Connecting…"));
   try {
     await api("/api/settings", { method: "PUT", body: { telegram: body } });
-    TG.mode = body.mode; TG.link = null;
+    TG.mode = body.mode;
     if (body.token) { $("#sTgToken").value = ""; $("#sTgToken").placeholder = "•••••• (saved, paste a new token to replace it)"; }
     await refreshTg();
   } catch (e) {
-    $("#sTgStatus").innerHTML = `<div class="tg-line err small">${esc(e.message)}</div>`;
+    tgNote(`<div class="tg-note err">${icon("alert")}<span>${esc(e.message)}</span></div>`);
   } finally { TG.busy = false; $("#sTgConnect").disabled = false; }
 }
 $("#sTgModes").addEventListener("change", () => {
@@ -998,7 +1077,7 @@ $("#sTgModes").addEventListener("change", () => {
   $("#sTgTokenRow").classList.toggle("hidden", mode !== "own");
   // An own bot needs its token first (unless one is saved): Connect applies it.
   if (mode === "own" && !/saved/.test($("#sTgToken").placeholder)) {
-    TG.mode = "own"; $("#sTgStatus").innerHTML = `<div class="muted small">Paste the token of your bot and press <b>Connect</b>.</div>`; $("#sTgToken").focus(); return;
+    TG.mode = "own"; tgNote(`<div class="tg-note">${icon("info")}<span>${TG_TOKEN_HINT}</span></div>`); $("#sTgToken").focus(); return;
   }
   setTg({ mode });
 });
@@ -1613,7 +1692,7 @@ async function autoEnter() {
 }
 
 // ---------- share links (owner) ----------
-const SH = { shares: [], pins: {}, editing: null, tg: { enabled: false, groups: [] }, net: { available: false }, qr: {} };
+const SH = { shares: [], pins: {}, editing: null, tg: { enabled: false, groups: [] }, net: { available: false }, rename: null };
 const tgTitle = id => SH.tg.groups.find(g => g.id === id)?.title || "Telegram group";
 const isLocalHost = () => ["localhost", "127.0.0.1", "[::1]", "::1"].includes(location.hostname) || location.hostname.endsWith(".localhost");
 // Addresses where the links work, best first: the internet relay, the local network, this page's own origin.
@@ -1621,7 +1700,7 @@ function linkBases() {
   const n = SH.net, out = [];
   if (n.available && n.internet?.enabled && n.internet.url) out.push({ kind: "internet", label: "Internet", base: n.internet.url });
   if (n.available && n.lan?.enabled && n.lan.url) out.push({ kind: "lan", label: "Wi‑Fi", base: n.lan.url });
-  out.push({ kind: "here", label: isLocalHost() ? "This computer" : location.host, base: location.origin });
+  out.push({ kind: "here", label: isLocalHost() ? "Computer" : location.host, base: location.origin });
   return out;
 }
 const reachable = () => linkBases().some(b => b.kind !== "here") || !isLocalHost();
@@ -1638,6 +1717,7 @@ function fmtWhen(d) { return d ? `${fmtListTime(d)}${d.slice(0, 10) === new Date
 // One dialog, two pages (list ↔ editor), like Telegram's nested settings: no modal on top of a modal.
 function sharePage(edit) {
   hideTip();
+  $("#shareDlg")._dirty = false; // a fresh page of the dialog: nothing typed yet
   $("#shListPage").classList.toggle("hidden", edit);
   $("#shareEditForm").classList.toggle("hidden", !edit);
   $("#shareDlg").setAttribute("aria-labelledby", edit ? "seH" : "shH");
@@ -1693,7 +1773,6 @@ function renderShares() {
   const opened = new Map([...$$("#shList .share-card")].map(c => [c.dataset.id, c.querySelector("details.sessions")?.open]));
   $("#shList").innerHTML = SH.shares.length ? SH.shares.map(sh => {
     const url = shareUrl(sh);
-    const qrOpen = SH.qr[sh.id];
     const chips = [
       sh.active ? "" : `<span class="chip off">${sh.enabled ? "expired" : "paused"}</span>`,
       sh.has_pin ? `<span class="chip">${icon("lock")}PIN</span>` : `<span class="chip warn">${icon("alert")}no PIN</span>`,
@@ -1714,13 +1793,12 @@ function renderShares() {
         <div class="share-url"><span class="u">${esc(url.replace(/^https?:\/\//, ""))}</span><span class="muted small">as <b>${esc(sh.display_name)}</b></span></div>
         <div class="share-actions">
           <button class="btn sm" data-copy="${esc(sh.id)}" title="Copy link">${icon("copy")}<span>Copy</span></button>
-          <button class="btn sm ${qrOpen ? "on" : ""}" data-qr="${esc(sh.id)}" title="QR code to open the link on a phone" aria-label="QR code" aria-expanded="${qrOpen ? "true" : "false"}">${icon("qr")}</button>
+          <button class="btn sm" data-qr="${esc(sh.id)}" title="QR code to open the link on a phone" aria-label="QR code to open the link on a phone" aria-haspopup="dialog">${icon("qr")}</button>
           ${navigator.share ? `<button class="btn sm" data-native="${esc(sh.id)}" title="Share…" aria-label="Share via apps">${icon("share")}</button>` : ""}
           <button class="btn sm" data-edit="${esc(sh.id)}" title="Edit link">${icon("edit")}<span>Edit</span></button>
         </div>
       </div>
       ${SH.pins[sh.id] ? `<div class="pin-once">${icon("lock")}<span>PIN <b class="mono">${esc(SH.pins[sh.id])}</b> (shown only now)</span><button class="btn sm" data-invite="${esc(sh.id)}">${icon("copy")}<span>Copy invite with PIN</span></button></div>` : ""}
-      ${qrOpen ? qrPanel(sh) : ""}
       <div class="chips">${chips}</div>
       ${sessions}
     </div>`;
@@ -1730,67 +1808,170 @@ function renderShares() {
     if (d && was != null) d.open = was;
   }
 }
-// The QR code of a link, inline in its card (no dialog over the dialog), with a switch between addresses.
-function qrPanel(sh) {
-  const bases = linkBases();
-  const pick = bases.find(b => b.kind === SH.qr[sh.id]) || bases[0];
-  const pin = SH.pins[sh.id];
-  // A fresh PIN rides along in the fragment, like in the copied invite.
-  const url = shareUrl(sh, pick.base) + (pin ? `#pin=${encodeURIComponent(pin)}` : "");
-  const tabs = bases.length > 1 ? `<div class="seg qr-tabs" role="radiogroup" aria-label="Address">${bases.map(b => `<label><input type="radio" name="qr-${esc(sh.id)}" value="${b.kind}" data-qr-kind="${b.kind}" data-share="${esc(sh.id)}" ${b === pick ? "checked" : ""}><span>${icon(b.kind === "internet" ? "globe" : b.kind === "lan" ? "wifi" : "user")}${esc(b.label)}</span></label>`).join("")}</div>` : "";
-  return `<div class="qr-panel">
-    <img src="${qrSrc(url)}" width="168" height="168" alt="QR code for ${esc(hostOf(url))}">
-    <div class="qr-side">${tabs}
-      <div class="mono small qr-url">${esc(hostOf(shareUrl(sh, pick.base)))}</div>
-      <div class="muted small">${esc(QR_NOTE[pick.kind])}${pin ? " The PIN is included." : ""}</div>
-    </div>
-  </div>`;
+// The QR code of a link, in its own small dialog over the list, with a switch between addresses.
+const QR = { sh: null, kind: null, url: "" };
+function openQr(sh) {
+  QR.sh = sh; QR.kind = linkBases()[0].kind;
+  renderQr();
+  $("#qrDlg").showModal();
 }
-function renderReach() {
-  const n = SH.net, local = isLocalHost();
-  $("#shReach").classList.toggle("hidden", !n.available);
-  if (n.available) {
-    const lan = n.lan || {}, net = n.internet || {};
-    $("#rLan").checked = !!lan.enabled; $("#rNet").checked = !!net.enabled;
-    const lanText = $("#rLanText");
-    lanText.classList.toggle("err", !!(lan.enabled && lan.error));
-    lanText.textContent = lan.enabled ? (lan.error || `Phones on the same Wi‑Fi open the links at ${hostOf(lan.url || "")}`) : "Phones and computers on the same network can open the links";
-    const netText = $("#rNetText");
-    netText.classList.toggle("err", net.enabled && net.state === "error");
-    netText.textContent = !net.enabled ? `Links work anywhere at your own address on ${net.domain || n.relay_host}, while iRoof.top runs. Visits pass through ${n.relay_host}.`
-      : net.state === "connected" ? `Live at ${hostOf(net.url || "")}`
-        : net.state === "error" ? (net.error || "Can't connect")
-          : `Connecting to ${n.relay_host}…`;
-    $("#rNameForm").classList.toggle("hidden", !net.enabled);
-    $("#rNameSuffix").textContent = `.${net.domain || n.relay_host}`;
-    if (document.activeElement !== $("#rName")) { $("#rName").value = net.name || ""; $("#rNameSave").disabled = true; }
+function renderQr() {
+  const sh = QR.sh; if (!sh) return;
+  const bases = linkBases();
+  const pick = bases.find(b => b.kind === QR.kind) || bases[0];
+  QR.kind = pick.kind;
+  const pin = SH.pins[sh.id];
+  const plain = shareUrl(sh, pick.base);
+  // A fresh PIN rides along in the fragment, like in the copied invite.
+  QR.url = plain + (pin ? `#pin=${encodeURIComponent(pin)}` : "");
+  $("#qrWho").innerHTML = `Chat with <b>${esc(sh.display_name)}</b>${sh.active ? "" : ` · <span class="err">${sh.enabled ? "expired" : "paused"}</span>`}`;
+  $("#qrTabs").classList.toggle("hidden", bases.length < 2);
+  $("#qrTabs").innerHTML = bases.map(b => `<label><input type="radio" name="qrKind" value="${b.kind}" ${b === pick ? "checked" : ""}><span>${icon(b.kind === "internet" ? "globe" : b.kind === "lan" ? "wifi" : "user")}${esc(b.label)}</span></label>`).join("");
+  const img = $("#qrImg"), src = qrSrc(QR.url);
+  if (img.getAttribute("src") !== src) img.src = src;
+  img.alt = `QR code for ${hostOf(plain)}`;
+  $("#qrUrl").textContent = hostOf(plain);
+  const warn = pick.kind === "here" && isLocalHost();
+  $("#qrNote").className = `qr-note${warn ? " warn" : ""}`;
+  $("#qrNote").innerHTML = `${icon(warn ? "alert" : pick.kind === "internet" ? "globe" : pick.kind === "lan" ? "wifi" : "info")}<span>${esc(QR_NOTE[pick.kind])}${pin ? " The PIN is included, so the phone opens the chat right away." : ""}</span>`;
+  $("#qrOpen").href = QR.url;
+}
+$("#qrTabs").addEventListener("change", e => { QR.kind = e.target.value; renderQr(); });
+$("#qrCopy").onclick = e => copyWithFeedback(e.currentTarget, QR.url, "Copied");
+$("#qrDlg").addEventListener("close", () => { QR.sh = null; });
+
+// Where the links open: Wi-Fi and Internet switches with a clear state (off, connecting, live, error).
+// The same panel sits above the list and inside the link editor, so a new link gets the right address
+// before it is created. Both copies render from SH.net.
+function reachHtml() {
+  const n = SH.net, lan = n.lan || {}, net = n.internet || {}, relay = esc(n.relay_host || "iroof.top");
+  const lanState = !lan.enabled ? "off" : lan.error ? "error" : lan.url ? "live" : "connecting";
+  const netState = !net.enabled ? "off" : net.state === "connected" ? "live" : net.state === "error" ? "error" : "connecting";
+  const PILL = { live: ["ok", "Live"], connecting: ["wait", "Connecting"], error: ["err", "Not working"] };
+  const pill = st => st === "off" ? "" : `<span class="pill ${PILL[st][0]}"><span class="dot"></span>${PILL[st][1]}</span>`;
+  const row = (kind, ic, title, st, desc, extra = "") => `<div class="reach-item" data-state="${st}">
+    <label class="switch-row reach-row"><span class="reach-ic">${icon(ic)}</span>
+      <span class="sw-text"><span class="reach-title"><b>${title}</b>${pill(st)}</span><span class="muted small${st === "error" ? " err" : ""}">${desc}</span></span>
+      <input type="checkbox" class="switch" data-reach-toggle="${kind}" ${st === "off" ? "" : "checked"} aria-label="${title}">
+    </label>${extra}</div>`;
+  const lanDesc = { off: "Phones and computers on the same network", live: "Phones on the same Wi‑Fi can open the links", connecting: "Starting…", error: esc(lan.error || "") }[lanState];
+  const netDesc = {
+    off: `Anyone, anywhere, at your own address on ${esc(net.domain || n.relay_host || "iroof.top")}`,
+    live: `Anyone with a link can open it while iRoof.top runs here. Visits pass through ${relay}.`,
+    connecting: `Connecting to ${relay}…`,
+    error: esc(net.error || "Can't connect"),
+  }[netState];
+  const lanAddr = lanState === "live" ? `<div class="reach-addr"><span class="addr mono">${esc(hostOf(lan.url))}</span></div>` : "";
+  let netAddr = "";
+  if (net.enabled) {
+    const suffix = `.${esc(net.domain || n.relay_host || "iroof.top")}`;
+    netAddr = SH.rename
+      ? `<div class="reach-addr editing"><div class="slug-row"><input class="reach-name-input" value="${esc(SH.rename.draft)}" maxlength="32" autocomplete="off" autocapitalize="off" spellcheck="false" aria-label="Your address"><span class="slug-prefix suffix">${suffix}</span></div>
+          <button type="button" class="btn sm primary" data-reach-save ${reachNameOk(SH.rename.draft) ? "" : "disabled"}>Save</button><button type="button" class="btn sm" data-reach-cancel>Cancel</button></div>
+          <div class="reach-hint muted small">3–32 lowercase letters, digits or hyphens. Links you already sent stop working at the old address.</div>`
+      : net.url ? `<div class="reach-addr"><span class="addr mono${netState === "live" ? "" : " dim"}">${esc(hostOf(net.url))}</span><button type="button" class="btn sm ghost" data-reach-rename title="Change your address">${icon("edit")}<span>Change</span></button></div>` : "";
   }
-  $("#shLocal").classList.toggle("hidden", reachable());
+  return row("lan", "wifi", "Wi‑Fi and local network", lanState, lanDesc, lanAddr) + row("internet", "globe", "Internet", netState, netDesc, netAddr);
+}
+const reachNameOk = v => /^[a-z0-9](?:[a-z0-9-]{1,30}[a-z0-9])$/.test(v) && v !== (SH.net.internet?.name || "");
+function renderReach() {
+  const n = SH.net;
+  $("#shReach").classList.toggle("hidden", !n.available);
+  $("#seReachField").classList.toggle("hidden", !n.available);
+  if (n.available) {
+    const html = reachHtml();
+    for (const box of $$("[data-reach]")) {
+      // Don't pull the address field away from under the cursor while the owner types.
+      if (box.contains(document.activeElement) && document.activeElement.matches(".reach-name-input")) continue;
+      if (box._html !== html) { box.innerHTML = html; box._html = html; }
+    }
+  }
+  $("#shLocal").classList.toggle("hidden", reachable() || (!isLocalHost() && !n.available));
   $("#shLocalText").innerHTML = n.available
     ? "For now these links only work on this computer. Turn on <b>Wi‑Fi</b> or <b>Internet</b> above so friends can open them."
     : `This page is open on <b>${esc(location.host)}</b>, so these links only work on this device. Open iRoof.top via an address your friends can reach to share it.`;
-  if (!local && !n.available) $("#shLocal").classList.add("hidden");
+  updateLinkPreview();
+  if ($("#qrDlg").open) renderQr();
+}
+// The editor shows the address the new link will really have, and who can open it.
+function updateLinkPreview() {
+  if (!shareEditing()) return;
+  const n = SH.net, best = linkBases()[0], net = n.internet || {};
+  $("#seOrigin").textContent = `${hostOf(best.base)}/s/`;
+  $("#seOrigin").title = `${best.base}/s/`;
+  const where = $("#seWhere");
+  let cls = "ok", ic = "check", text;
+  if (best.kind === "internet") {
+    text = net.state === "connected" ? "Works anywhere" : net.state === "error" ? "Internet sharing has a problem, see above" : `Works anywhere once connected to ${n.relay_host || "iroof.top"}`;
+    if (net.state !== "connected") { cls = net.state === "error" ? "warn" : "wait"; ic = net.state === "error" ? "alert" : "clock"; }
+    if (n.lan?.enabled && n.lan.url) text += ` · on the same Wi‑Fi also at ${hostOf(n.lan.url)}`;
+  } else if (best.kind === "lan") text = "Works for phones and computers on the same Wi‑Fi";
+  else if (isLocalHost()) { cls = "warn"; ic = "alert"; text = n.available ? "Only works on this computer: turn on Wi‑Fi or Internet above" : "Only works on this computer"; }
+  else text = `Works for everyone who can reach ${location.host}`;
+  where.className = `field-note se-where ${cls}`;
+  where.innerHTML = `${icon(ic)}<span>${esc(text)}</span>`;
 }
 async function putSharing(body, input) {
   if (input) input.disabled = true;
-  try { SH.net = await api("/api/sharing", { method: "PUT", body }); }
+  let ok = false;
+  try { SH.net = await api("/api/sharing", { method: "PUT", body }); ok = true; }
   catch (e) { toast(e.message, { error: true }); try { SH.net = await api("/api/sharing"); } catch { } }
   finally { if (input) input.disabled = false; }
+  $$("[data-reach]").forEach(box => { box._html = null; }); // the switch the owner flipped may not match SH.net
   renderReach(); if (!shareEditing()) renderShares();
+  if (ok && SH.net.internet?.enabled && SH.net.internet.state !== "connected") watchReach();
+  return ok;
 }
-$("#rLan").onchange = e => putSharing({ lan: e.target.checked }, e.target);
-$("#rNet").onchange = e => putSharing({ internet: e.target.checked }, e.target);
-$("#rName").oninput = () => {
-  const v = $("#rName").value.trim().toLowerCase();
-  $("#rNameSave").disabled = !v || v === (SH.net.internet?.name || "");
-};
-$("#rNameForm").addEventListener("submit", async e => {
-  e.preventDefault();
-  const name = $("#rName").value.trim().toLowerCase();
-  $("#rName").blur();
-  await putSharing({ name }, $("#rNameSave"));
-  if (SH.net.internet?.name === name) toast(`Links now live at ${hostOf(SH.net.internet.url || "")}`);
+// Right after Internet is switched on, follow the connection closely so "Live" shows up without waiting for the slow poll.
+let reachWatch = null;
+function watchReach(tries = 20) {
+  clearTimeout(reachWatch);
+  reachWatch = setTimeout(async () => {
+    if (!$("#shareDlg").open) return;
+    try {
+      const net = await api("/api/sharing");
+      if (JSON.stringify(net) !== JSON.stringify(SH.net)) { SH.net = net; renderReach(); if (!shareEditing()) renderShares(); }
+    } catch { }
+    const st = SH.net.internet;
+    if (tries > 1 && st?.enabled && st.state !== "connected" && st.state !== "error") watchReach(tries - 1);
+  }, 800);
+}
+$("#shareDlg").addEventListener("change", e => {
+  const t = e.target.closest("[data-reach-toggle]"); if (!t) return;
+  e.stopPropagation();
+  putSharing({ [t.dataset.reachToggle]: t.checked }, t);
+}, true);
+$("#shareDlg").addEventListener("click", e => {
+  const b = e.target.closest("[data-reach-rename],[data-reach-cancel],[data-reach-save]"); if (!b) return;
+  if (b.matches("[data-reach-rename]")) {
+    SH.rename = { draft: SH.net.internet?.name || "" }; renderReach();
+    const box = b.closest("[data-reach]") || document;
+    const inp = $(".reach-name-input", box) || $(".reach-name-input"); if (inp) { inp.focus(); inp.setSelectionRange(inp.value.length, inp.value.length); }
+  } else if (b.matches("[data-reach-cancel]")) { SH.rename = null; renderReach(); }
+  else saveReachName(b);
 });
+$("#shareDlg").addEventListener("input", e => {
+  const inp = e.target.closest(".reach-name-input"); if (!inp || !SH.rename) return;
+  e.stopPropagation();
+  SH.rename.draft = inp.value.trim().toLowerCase();
+  const save = inp.closest(".reach-addr").querySelector("[data-reach-save]");
+  save.disabled = !reachNameOk(SH.rename.draft);
+}, true);
+$("#shareDlg").addEventListener("keydown", e => {
+  const inp = e.target.closest?.(".reach-name-input"); if (!inp) return;
+  // Enter saves the address (and never submits the link editor around it); Escape only leaves the field.
+  if (e.key === "Enter") { e.preventDefault(); saveReachName(inp.closest(".reach-addr").querySelector("[data-reach-save]")); }
+  else if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); SH.rename = null; inp.blur(); renderReach(); }
+});
+async function saveReachName(btn) {
+  const name = SH.rename?.draft || "";
+  if (!reachNameOk(name)) return;
+  document.activeElement?.blur();
+  if (await putSharing({ name }, btn) && SH.net.internet?.name === name) {
+    SH.rename = null; renderReach();
+    toast(`Links now live at ${hostOf(SH.net.internet.url || "")}`);
+  }
+}
 function inviteText(sh, withPin) {
   const pin = SH.pins[sh.id];
   // The PIN rides in the fragment (#pin=…): one tap opens the chat, and it never reaches server logs.
@@ -1802,7 +1983,7 @@ function inviteText(sh, withPin) {
 $("#shList").addEventListener("click", async e => {
   const b = e.target.closest("button,a"); if (!b) return;
   const sh = SH.shares.find(x => x.id === (b.dataset.copy || b.dataset.qr || b.dataset.native || b.dataset.edit || b.dataset.invite || b.dataset.share));
-  if (b.dataset.qr) { SH.qr[sh.id] = SH.qr[sh.id] ? undefined : (linkBases()[0].kind); renderShares(); }
+  if (b.dataset.qr) openQr(sh);
   else if (b.dataset.copy) copyWithFeedback(b, shareUrl(sh), "Copied");
   else if (b.dataset.invite) copyWithFeedback(b, inviteText(sh, true), "Invite copied");
   else if (b.dataset.native) navigator.share({ title: sh.display_name, text: inviteText(sh, false), url: shareUrl(sh) }).catch(() => { });
@@ -1812,10 +1993,6 @@ $("#shList").addEventListener("click", async e => {
     try { const r = await api(`/api/shares/${sh.id}/sessions/${b.dataset.end}`, { method: "DELETE" }); Object.assign(sh, r); renderShares(); loadState().catch(() => { }); }
     catch (err) { toast(err.message, { error: true }); }
   } else if (b.hasAttribute("data-open-session")) $("#shareDlg").close();
-});
-$("#shList").addEventListener("change", e => {
-  const r = e.target.closest("[data-qr-kind]"); if (!r) return;
-  SH.qr[r.dataset.share] = r.dataset.qrKind; renderShares();
 });
 $("#shareBtn").onclick = () => openShares();
 $("#shNew").onclick = () => openShareEdit(null);
@@ -1869,7 +2046,6 @@ function openShareEdit(sh) {
   $("#seH").textContent = sh ? `Edit /s/${sh.slug}` : "New link";
   $("#seSave").textContent = sh ? "Save" : "Create link";
   $("#seDelete").classList.toggle("hidden", !sh);
-  $("#seOrigin").textContent = `${hostOf(linkBases()[0].base)}/s/`;
   $("#seSlug").value = sh?.slug || "";
   $("#seName").value = sh?.display_name || S.chat.chat.persona;
   $("#sePin").value = ""; $("#sePin").placeholder = sh?.has_pin ? "set · type to change" : "none";
@@ -1888,6 +2064,7 @@ function openShareEdit(sh) {
   $("#seAiDelay").value = sh ? sh.ai_delay_secs ?? 10 : 10;
   syncShareForm();
   sharePage(true);
+  updateLinkPreview();
   if (!$("#shareDlg").open) $("#shareDlg").showModal();
   if (matchMedia("(pointer: fine)").matches) $("#seSlug").focus();
 }

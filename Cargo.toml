@@ -1,12 +1,13 @@
 [package]
 name = "rooftop"
-version = "0.2.0"
+version = "0.3.0"
 edition = "2024"
 rust-version = "1.88"
 description = "iRoof.top: continue a Telegram or WhatsApp chat with an LLM that writes in the style of a person from the export (OpenAI-compatible, MCP)"
 license = "MIT"
 readme = "README.md"
 homepage = "https://iroof.top"
+documentation = "https://irooftop.github.io/rooftop"
 repository = "https://github.com/irooftop/rooftop"
 keywords = ["telegram", "whatsapp", "llm", "mcp", "chat"]
 categories = ["command-line-utilities", "web-programming::http-server"]

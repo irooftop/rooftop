@@ -87,6 +87,8 @@ a { color: var(--link); }
 }
 .icon-btn .i { width: 22px; height: 22px; }
 .icon-btn:active, .send:active { transform: scale(.94); }
+.btn:active:not(:disabled) { transform: scale(.98); }
+.btn { transition: transform .08s ease, filter .15s; }
 .icon-btn:hover { background: var(--hover); color: var(--text); }
 .icon-btn.danger:hover { color: var(--danger); }
 .side-actions { display: flex; gap: 8px; padding: 4px 14px 10px; }
@@ -394,6 +396,9 @@ dialog[open] { animation: dlg-in .18s ease-out; }
 dialog[open]::backdrop { animation: fade-in .18s ease-out; }
 @keyframes dlg-in { from { opacity: 0; transform: translateY(8px) scale(.98); } }
 @keyframes fade-in { from { opacity: 0; } }
+/* A backdrop click over unsaved edits: the dialog stays and shrugs. */
+dialog.nudge > * { animation: dlg-nudge .32s ease; }
+@keyframes dlg-nudge { 30% { transform: scale(1.015); } 65% { transform: scale(.995); } }
 
 /* Media library */
 #mediaDlg .dlg { width: 900px; }
@@ -503,44 +508,125 @@ body.lb-open { overflow: hidden; }
 .pin-once { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 13.5px; padding: 8px 10px; border-radius: 10px; background: color-mix(in srgb, var(--accent) 10%, transparent); }
 .pin-once > .i { color: var(--accent); width: 17px; height: 17px; }
 .pin-once > span { flex: 1; min-width: 160px; }
-/* Where links work: Wi-Fi / internet switches above the list. */
-.reach { display: grid; gap: 4px; padding: 6px 12px; border: 1px solid var(--border); border-radius: 14px; background: var(--bg-2); }
-.reach-row { padding: 6px 0 !important; }
-.reach-row + .reach-row { border-top: 1px solid var(--border); }
-.reach-ic { display: grid; place-items: center; width: 32px; height: 32px; border-radius: 10px; background: color-mix(in srgb, var(--accent) 12%, var(--panel)); color: var(--accent); flex: none; }
+/* Status pill: Live / Connecting / Not working (Wi-Fi, Internet, Telegram). */
+.pill { display: inline-flex; align-items: center; gap: 5px; height: 20px; padding: 0 8px; border-radius: 999px; font-size: 11.5px; font-weight: 600; letter-spacing: .1px; white-space: nowrap; flex: none;
+  color: var(--muted); background: color-mix(in srgb, var(--muted) 14%, transparent); }
+.pill .dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+.pill.ok { color: #23883f; background: color-mix(in srgb, #2fa84f 15%, transparent); }
+[data-theme="dark"] .pill.ok { color: #5fd47e; }
+.pill.ok .dot { box-shadow: 0 0 0 0 color-mix(in srgb, #2fa84f 60%, transparent); animation: live-pulse 2.4s ease-out infinite; }
+.pill.wait { color: #b26a00; background: color-mix(in srgb, #f5a623 16%, transparent); }
+[data-theme="dark"] .pill.wait { color: #f5b94a; }
+.pill.wait .dot { animation: rec-pulse 1.2s ease-in-out infinite; }
+.pill.err { color: var(--danger); background: color-mix(in srgb, var(--danger) 13%, transparent); }
+@keyframes live-pulse { 0% { box-shadow: 0 0 0 0 color-mix(in srgb, #2fa84f 55%, transparent); } 70%, 100% { box-shadow: 0 0 0 5px transparent; } }
+.spin { display: inline-block; flex: none; width: 14px; height: 14px; border-radius: 50%; border: 2px solid currentColor; border-right-color: transparent; animation: spin .8s linear infinite; opacity: .7; }
+.btn.ghost { background: none; border-color: transparent; color: var(--accent); }
+.btn.ghost:hover { background: color-mix(in srgb, var(--accent) 10%, transparent); filter: none; }
+.err, .reach .sw-text .small.err { color: var(--danger); }
+/* Where links open: Wi-Fi / Internet switches, above the list and in the link editor. */
+.reach { display: grid; padding: 2px 12px; border: 1px solid var(--border); border-radius: 14px; background: var(--bg-2); }
+.reach:empty { display: none; }
+.reach-item { display: grid; gap: 2px; padding: 8px 0; }
+.reach-item + .reach-item { border-top: 1px solid var(--border); }
+.reach-row { padding: 0 !important; }
+.reach-ic { display: grid; place-items: center; width: 34px; height: 34px; border-radius: 10px; background: color-mix(in srgb, var(--accent) 12%, var(--panel)); color: var(--accent); flex: none; transition: background .2s, color .2s; }
+.reach-item[data-state="off"] .reach-ic { background: var(--panel); color: var(--muted); }
+.reach-item[data-state="live"] .reach-ic { background: color-mix(in srgb, #2fa84f 14%, var(--panel)); color: #2fa84f; }
+.reach-item[data-state="error"] .reach-ic { background: color-mix(in srgb, var(--danger) 12%, var(--panel)); color: var(--danger); }
 .reach-ic .i { width: 18px; height: 18px; }
-.reach .sw-text .small { overflow-wrap: anywhere; }
-.reach .err, .tg-line .err, .tg-line.err { color: var(--danger); }
-.reach-name { display: flex; align-items: center; gap: 8px; padding: 0 0 6px 44px; }
-.reach-name > label { flex: none; }
-.reach-name .slug-row { flex: 1; min-width: 0; height: 34px; background: var(--panel); }
-.reach-name .slug-prefix { font-size: 13.5px; }
-.reach-name .slug-prefix.suffix { padding: 0 11px 0 0; }
-.dlg .reach-name .slug-row > input { padding: 0 0 0 11px; font-size: 14px; }
+.reach-title { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.reach .sw-text .small { overflow-wrap: anywhere; line-height: 1.35; }
+.reach-addr { display: flex; align-items: center; gap: 6px; margin-left: 46px; min-height: 32px; min-width: 0; }
+.reach-addr .addr { flex: 0 1 auto; min-width: 0; font-size: 13px; font-weight: 500; padding: 4px 9px; border-radius: 8px; background: var(--panel); border: 1px solid var(--border); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.reach-addr .addr.dim { color: var(--muted); font-weight: 500; }
+.reach-addr.editing .slug-row { flex: 1; min-width: 0; height: 34px; background: var(--panel); }
+.reach-addr .slug-prefix.suffix { padding: 0 11px 0 0; font-size: 13.5px; }
+.dlg .reach-addr .slug-row > input { padding: 0 0 0 11px; font-size: 14px; }
+.reach-hint { margin-left: 46px; }
+.se-where .i { width: 15px; height: 15px; flex: none; }
+.se-where { gap: 6px; flex-wrap: nowrap; }
+.se-where.ok .i { color: #2fa84f; }
+.se-where.wait .i { color: #d48806; }
+.se-where.warn { color: #b26a00; }
+[data-theme="dark"] .se-where.warn { color: #f5b94a; }
 .btn.sm.on { background: color-mix(in srgb, var(--accent) 14%, var(--panel)); color: var(--accent); }
-/* QR code of a link, inline in its card. */
-.qr-panel { display: flex; gap: 14px; align-items: center; padding: 10px; border-radius: 12px; background: var(--bg-2); min-width: 0; }
-.qr-panel img { flex: none; width: 168px; height: 168px; border-radius: 10px; background: #fff; padding: 4px; image-rendering: pixelated; }
-.qr-side { flex: 1; min-width: 0; display: grid; gap: 8px; align-content: center; }
-.qr-side a { overflow-wrap: anywhere; color: var(--link); }
-.qr-url { overflow-wrap: anywhere; font-weight: 600; }
-.qr-tabs span { height: 28px; font-size: 12.5px; }
-/* Settings → Telegram. */
+/* QR dialog of a link. */
+.qr-dlg { width: 400px; justify-items: stretch; }
+.qr-who { text-align: center; font-size: 14px; margin-top: -4px; overflow-wrap: anywhere; }
+.qr-who b { color: var(--text); }
+.qr-tabs span { height: 30px; font-size: 13px; padding: 0 6px; gap: 5px; }
+.qr-frame { justify-self: center; padding: 12px; border-radius: 18px; background: #fff; box-shadow: 0 0 0 1px var(--border), 0 6px 22px rgba(16, 35, 47, .1); line-height: 0; }
+.qr-frame img { width: 232px; height: 232px; image-rendering: pixelated; }
+.qr-frame.sm { padding: 8px; border-radius: 14px; }
+.qr-frame.sm img { width: 148px; height: 148px; }
+.qr-url { text-align: center; font-weight: 600; font-size: 14.5px; overflow-wrap: anywhere; }
+.qr-note { display: flex; gap: 8px; align-items: flex-start; font-size: 13px; line-height: 1.45; color: var(--muted); padding: 9px 11px; border-radius: 10px; background: var(--bg-2); }
+.qr-note .i { width: 16px; height: 16px; flex: none; margin-top: 1px; color: var(--accent); }
+.qr-note.warn { color: var(--text); background: color-mix(in srgb, #f5a623 16%, var(--panel)); }
+.qr-note.warn .i { color: #d48806; }
+/* Settings → Telegram: a bot card with its status and the connected chats, Telegram-style. */
 .tg-token { display: flex; gap: 8px; margin-top: 8px; }
 .tg-token input { flex: 1; min-width: 0; }
-.tg-status { display: grid; gap: 6px; margin-top: 8px; }
+.tg-status { display: grid; gap: 8px; margin-top: 8px; }
 .tg-status:empty { display: none; }
-.tg-line { display: flex; align-items: baseline; gap: 8px; }
-.tg-line .dot, .tg-status .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); flex: none; transform: translateY(-1px); }
-.tg-line .dot.ok { background: #2fa84f; }
-.tg-line .dot.err { background: var(--danger); }
-.tg-actions { display: flex; gap: 6px; flex-wrap: wrap; }
-.tg-status .qr-panel img { width: 148px; height: 148px; }
+.tg-note { display: flex; gap: 8px; align-items: flex-start; font-size: 13px; line-height: 1.45; color: var(--muted); }
+.tg-note .i { width: 16px; height: 16px; flex: none; margin-top: 1px; }
+.tg-note .spin { width: 13px; height: 13px; margin-top: 2px; }
+.tg-note.err { color: var(--danger); }
+.tg-note a { color: var(--link); }
+.tg-card { display: grid; gap: 12px; padding: 12px; border: 1px solid var(--border); border-radius: 14px; background: var(--bg-2); }
+.tg-bot { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.tg-logo { display: grid; place-items: center; width: 42px; height: 42px; border-radius: 50%; flex: none; color: #fff; background: linear-gradient(160deg, #37aee2, #1e96c8); box-shadow: 0 2px 6px rgba(30, 150, 200, .3); }
+.tg-logo .i { width: 21px; height: 21px; transform: translateX(-1px) rotate(-8deg); }
+.tg-bot-text { flex: 1; min-width: 0; display: grid; gap: 1px; }
+.tg-bot-text b { font-size: 15px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tg-bot-text .small { overflow-wrap: anywhere; line-height: 1.35; }
+.tg-section { display: grid; gap: 8px; }
+.tg-section-head { display: flex; align-items: center; gap: 6px; }
+.tg-section-head .count { font-size: 11.5px; font-weight: 600; color: var(--muted); background: var(--panel); border: 1px solid var(--border); border-radius: 999px; padding: 0 7px; line-height: 18px; }
+.tg-chats { list-style: none; margin: 0; padding: 0; display: grid; border-radius: 12px; background: var(--panel); border: 1px solid var(--border); overflow: hidden; }
+.tg-chat { display: flex; align-items: center; gap: 10px; padding: 8px 10px; min-width: 0; }
+.tg-chat + .tg-chat { border-top: 1px solid var(--border); }
+.tg-chat .avatar.sm { width: 38px; height: 38px; font-size: 14px; }
+.tg-chat .grow { flex: 1; min-width: 0; }
+.tg-chat .t { font-weight: 500; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tg-chat-ok { display: grid; place-items: center; width: 22px; height: 22px; border-radius: 50%; flex: none; color: #fff; background: #2fa84f; }
+.tg-chat-ok .i { width: 14px; height: 14px; stroke-width: 2.6; }
+.tg-empty { display: flex; gap: 12px; align-items: flex-start; padding: 12px; border-radius: 12px; border: 1px dashed color-mix(in srgb, var(--muted) 45%, var(--border)); font-size: 13px; line-height: 1.45; }
+.tg-empty > .i { width: 22px; height: 22px; flex: none; color: var(--accent); }
+.tg-empty > div { display: grid; gap: 2px; color: var(--muted); }
+.tg-empty b { color: var(--text); font-size: 14px; font-weight: 600; }
+.tg-add-btn { justify-self: start; }
+/* "Add the bot to a group" dialog. */
+.tg-add { width: 520px; }
+.tg-add-main { display: flex; gap: 18px; align-items: center; }
+.tg-steps { list-style: none; counter-reset: step; margin: 0; padding: 0; display: grid; gap: 12px; flex: 1; min-width: 0; }
+.tg-steps li { counter-increment: step; display: grid; grid-template-columns: 26px 1fr; column-gap: 10px; font-size: 13.5px; line-height: 1.4; }
+.tg-steps li::before { content: counter(step); grid-row: span 2; display: grid; place-items: center; width: 26px; height: 26px; border-radius: 50%; font-size: 13px; font-weight: 600; color: var(--accent); background: color-mix(in srgb, var(--accent) 13%, transparent); }
+.tg-steps b { font-weight: 600; }
+.tg-steps span { color: var(--muted); }
+.tg-open { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.tg-open .btn { min-height: 42px; }
+.copy-list { display: grid; border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
+.copy-row { display: flex; align-items: center; gap: 10px; padding: 6px 6px 6px 12px; min-width: 0; }
+.copy-row + .copy-row { border-top: 1px solid var(--border); }
+.copy-label { flex: none; width: 34px; font-size: 12px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .4px; }
+.copy-val { flex: 1; min-width: 0; background: none; padding: 0; font-size: 12.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tg-wait { display: flex; gap: 10px; align-items: center; font-size: 13.5px; line-height: 1.45; padding: 10px 12px; border-radius: 12px; color: var(--muted); background: var(--bg-2); }
+.tg-wait.ok { color: var(--text); background: color-mix(in srgb, #2fa84f 13%, var(--panel)); }
+.tg-wait.ok > .i { width: 20px; height: 20px; flex: none; color: #2fa84f; }
 @media (max-width: 720px) {
-  .qr-panel { flex-direction: column; align-items: stretch; }
-  .qr-panel img { align-self: center; }
-  .reach-name { padding-left: 0; flex-wrap: wrap; }
+  .qr-dlg, .tg-add { width: 100%; }
+  .qr-tabs span .i { display: none; }
+  .tg-add-main { flex-direction: column; align-items: stretch; }
+  .tg-add-main .qr-frame { align-self: center; order: 2; } /* on a phone, the buttons matter more than the code */
+  .tg-open { grid-template-columns: 1fr; }
+  .reach-addr, .reach-hint { margin-left: 0; }
+  .reach-addr.editing { flex-wrap: wrap; }
+  .reach-addr.editing .slug-row { flex-basis: 100%; height: 44px; }
 }
+@media (prefers-reduced-motion: reduce) { .pill .dot { animation: none !important; } }
 .sessions summary { cursor: pointer; font-size: 13.5px; color: var(--muted); padding: 2px 0; }
 .session-row { display: flex; align-items: center; gap: 10px; padding: 6px 0; border-top: 1px solid var(--border); min-width: 0; }
 .session-row:first-of-type { border-top: 0; }

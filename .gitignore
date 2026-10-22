@@ -3,3 +3,7 @@
 .env
 .DS_Store
 /exports
+/docs/node_modules
+/docs/public/img
+/docs/.vitepress/dist
+/docs/.vitepress/cache

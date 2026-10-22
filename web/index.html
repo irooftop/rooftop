@@ -406,15 +406,8 @@ c-46 -3 -74 48 -45 83 4 5 3 5 -5 1z"/></g>
       <button type="button" class="icon-btn" data-close aria-label="Close"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-close"></use></svg></button>
     </div>
     <div class="help" id="hShare" hidden>Send a link so other people can talk to this persona, for example a friend who wants to see how well the AI writes in your style, or talks to a copy of themselves. Visitors see only the chat: no settings, notes, media descriptions, LLM prompt or other chats. By default every visitor gets an own conversation that starts after the end of the export, and you can read them all here. A PIN is checked on the server, and wrong guesses lock the link for that visitor first, then for everyone, for longer and longer. Each persona answer costs tokens on your API key, so keep the limits.</div>
-    <div class="reach hidden" id="shReach">
-      <label class="switch-row reach-row"><span class="reach-ic"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-wifi"></use></svg></span><span class="sw-text"><b>Wi‑Fi and local network</b><span class="muted small" id="rLanText"></span></span><input type="checkbox" class="switch" id="rLan"></label>
-      <label class="switch-row reach-row"><span class="reach-ic"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-globe"></use></svg></span><span class="sw-text"><b>Internet</b><span class="muted small" id="rNetText"></span></span><input type="checkbox" class="switch" id="rNet"></label>
-      <form class="reach-name hidden" id="rNameForm">
-        <label for="rName" class="muted small">Address</label>
-        <div class="slug-row"><input id="rName" maxlength="32" autocomplete="off" autocapitalize="off" spellcheck="false" pattern="[a-z0-9](?:[a-z0-9\-]{1,30}[a-z0-9])" title="3–32 lowercase letters, digits or hyphens"><span class="slug-prefix suffix" id="rNameSuffix">.iroof.top</span></div>
-        <button class="btn sm" id="rNameSave" disabled>Save</button>
-      </form>
-    </div>
+    <!-- Where the links open (Wi-Fi / Internet): rendered by renderReach(), also inside the link editor. -->
+    <div class="reach hidden" id="shReach" data-reach></div>
     <div class="note warn hidden" id="shLocal"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-alert"></use></svg><span id="shLocalText"></span></div>
     <div class="share-list" id="shList"></div>
     <div class="dlg-actions">
@@ -428,9 +421,14 @@ c-46 -3 -74 48 -45 83 4 5 3 5 -5 1z"/></g>
       <h2 id="seH">New link</h2>
       <button type="button" class="icon-btn" data-close aria-label="Close"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-close"></use></svg></button>
     </div>
+    <div class="field hidden" id="seReachField">
+      <div class="field-head"><span class="legend">Who can open it</span></div>
+      <div class="reach" id="seReach" data-reach></div>
+    </div>
     <div class="field">
       <div class="field-head"><label for="seSlug">Link</label><span class="field-hint">empty = random</span></div>
       <div class="slug-row"><span class="slug-prefix" id="seOrigin"></span><input id="seSlug" placeholder="random" autocomplete="off" autocapitalize="off" spellcheck="false" maxlength="40" pattern="[A-Za-z0-9][A-Za-z0-9_\-]{1,38}[A-Za-z0-9]" title="3–40 letters, digits, - or _"></div>
+      <div class="field-note se-where" id="seWhere" aria-live="polite"></div>
     </div>
     <div class="grid2 tight">
       <div class="field">
@@ -499,6 +497,56 @@ c-46 -3 -74 48 -45 83 4 5 3 5 -5 1z"/></g>
       <button type="submit" class="btn primary" id="seSave">Create link</button>
     </div>
   </form>
+</dialog>
+
+<dialog id="qrDlg" aria-labelledby="qrH" aria-describedby="qrNote">
+  <div class="dlg compact qr-dlg">
+    <div class="dlg-head">
+      <h2 id="qrH">Open on a phone</h2>
+      <button type="button" class="icon-btn" data-close aria-label="Close"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-close"></use></svg></button>
+    </div>
+    <div class="qr-who muted" id="qrWho"></div>
+    <div class="seg qr-tabs hidden" id="qrTabs" role="radiogroup" aria-label="Address"></div>
+    <div class="qr-frame"><img id="qrImg" width="232" height="232" alt=""></div>
+    <div class="qr-url mono" id="qrUrl"></div>
+    <div class="qr-note" id="qrNote"></div>
+    <div class="dlg-actions">
+      <a class="btn" id="qrOpen" target="_blank" rel="noopener noreferrer"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-external"></use></svg><span>Open</span></a>
+      <span class="spacer"></span>
+      <button type="button" class="btn" id="qrCopy"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-copy"></use></svg><span>Copy link</span></button>
+      <button type="button" class="btn primary" data-close>Done</button>
+    </div>
+  </div>
+</dialog>
+
+<dialog id="tgAddDlg" aria-labelledby="taH">
+  <div class="dlg compact tg-add">
+    <div class="dlg-head">
+      <h2 id="taH">Add the bot to a group</h2>
+      <button type="button" class="icon-btn" data-close aria-label="Close"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-close"></use></svg></button>
+    </div>
+    <div class="tg-bot">
+      <span class="tg-logo" aria-hidden="true"><svg class="i" focusable="false"><use href="#i-send"></use></svg></span>
+      <div class="tg-bot-text"><b id="taBot">@bot</b><span class="muted small" id="taBotSub">Telegram bot</span></div>
+    </div>
+    <div class="tg-add-main">
+      <div class="qr-frame sm"><img id="taQr" width="168" height="168" alt="QR code: opens Telegram on a phone to add the bot to a group"></div>
+      <ol class="tg-steps">
+        <li><b>Open the link</b><span>in the Telegram app, on the web, or scan the code with your phone.</span></li>
+        <li><b>Pick a group</b><span>or create a new one, and confirm adding the bot.</span></li>
+        <li><b>Done</b><span>the group shows up here, and you can pick it in any share link.</span></li>
+      </ol>
+    </div>
+    <div class="tg-open">
+      <a class="btn primary" id="taOpenApp" target="_blank" rel="noopener noreferrer"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-send"></use></svg><span>Open Telegram</span></a>
+      <a class="btn" id="taOpenWeb" target="_blank" rel="noopener noreferrer"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-globe"></use></svg><span>Open Telegram Web</span></a>
+    </div>
+    <div class="copy-list" aria-label="Copy a link">
+      <div class="copy-row"><span class="copy-label">App</span><code class="copy-val" id="taAppUrl"></code><button type="button" class="btn sm" data-ta-copy="app" aria-label="Copy the t.me link"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-copy"></use></svg><span>Copy</span></button></div>
+      <div class="copy-row"><span class="copy-label">Web</span><code class="copy-val" id="taWebUrl"></code><button type="button" class="btn sm" data-ta-copy="web" aria-label="Copy the Telegram Web link"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-copy"></use></svg><span>Copy</span></button></div>
+    </div>
+    <div class="tg-wait" id="taWait" role="status" aria-live="polite"></div>
+  </div>
 </dialog>
 
 <dialog id="notesDlg" aria-labelledby="nH">

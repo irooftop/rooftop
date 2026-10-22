@@ -1,0 +1,90 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 340" width="960" height="340" role="img" aria-labelledby="t d">
+<title id="t">How iRoof.top works</title>
+<desc id="d">A Telegram or WhatsApp export goes into iRoof.top, which builds a style profile, replays the person's actions as tool calls and keeps a memory. An OpenAI-compatible model with MCP tools writes the answers, and the chat continues in the person's style.</desc>
+<style>
+text { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+.wm { font-family: "Avenir Next", Avenir, "Century Gothic", Futura, "Segoe UI", sans-serif; }
+.flow { stroke-dasharray: 6 8; animation: flow 1s linear infinite; }
+.back { animation-direction: reverse; }
+@keyframes flow { to { stroke-dashoffset: -14; } }
+.p1, .p2, .p3 { animation: 9s ease-in-out infinite; }
+.p1 { animation-name: hi1; } .p2 { animation-name: hi2; } .p3 { animation-name: hi3; }
+@keyframes hi1 { 0%, 8%, 20%, 100% { fill: #1f2d3b; } 11%, 17% { fill: #24496e; } }
+@keyframes hi2 { 0%, 17%, 29%, 100% { fill: #1f2d3b; } 20%, 26% { fill: #24496e; } }
+@keyframes hi3 { 0%, 26%, 38%, 100% { fill: #1f2d3b; } 29%, 35% { fill: #24496e; } }
+.b { opacity: 0; transform-box: fill-box; animation: 9s cubic-bezier(.2, .8, .2, 1) infinite; }
+.b1 { transform-origin: left bottom; animation-name: b1; }
+.b2 { transform-origin: left bottom; animation-name: b2; }
+.b3 { transform-origin: left bottom; animation-name: b3; }
+.b4 { transform-origin: right bottom; animation-name: b4; }
+@keyframes b1 { 0%, 40% { opacity: 0; transform: scale(.6); } 44%, 92% { opacity: 1; transform: none; } 97%, 100% { opacity: 0; } }
+@keyframes b2 { 0%, 47% { opacity: 0; transform: scale(.6); } 51%, 92% { opacity: 1; transform: none; } 97%, 100% { opacity: 0; } }
+@keyframes b3 { 0%, 54% { opacity: 0; transform: scale(.6); } 58%, 92% { opacity: 1; transform: none; } 97%, 100% { opacity: 0; } }
+@keyframes b4 { 0%, 66% { opacity: 0; transform: scale(.6); } 70%, 92% { opacity: 1; transform: none; } 97%, 100% { opacity: 0; } }
+.typing { animation: typing 9s linear infinite; }
+@keyframes typing { 0%, 34% { opacity: 0; } 36%, 57% { opacity: 1; } 59%, 100% { opacity: 0; } }
+.seen { animation: seen 9s linear infinite; }
+@keyframes seen { 0%, 34% { opacity: 1; } 36%, 57% { opacity: 0; } 59%, 100% { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) {
+  .flow, .p1, .p2, .p3, .typing { animation: none; }
+  .typing { opacity: 0; }
+  .seen { animation: none; opacity: 1; }
+  .b { animation: none; opacity: 1; transform: none; }
+}
+</style>
+<defs>
+  <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 10 5 0 10z" fill="#3390ec"/></marker>
+</defs>
+<rect x=".5" y=".5" width="959" height="339" rx="20" fill="#0f1419" stroke="#22313f"/>
+
+<!-- 1. the export -->
+<rect x="32" y="70" width="230" height="150" rx="16" fill="#17212b" stroke="#22313f"/>
+<text x="52" y="100" font-size="12" font-weight="600" fill="#8b98a5" letter-spacing=".8">1 · EXPORT A CHAT</text>
+<circle cx="66" cy="137" r="15" fill="#2aabee"/>
+<path d="M58.6 136.4 73.4 130.3c.7-.3 1.4.4 1.2 1.1L71.9 143c-.2.8-1.1 1.1-1.7.6l-4.1-3.1-2.1 2c-.3.3-.8.1-.8-.3v-3.3l7.2-6.6-8.9 5.5-3-1c-.7-.2-.7-1.1.1-1.4z" fill="#fff"/>
+<text x="92" y="134" font-size="15" font-weight="600" fill="#e8eaed">Telegram</text>
+<text x="92" y="151" font-size="12" fill="#8b98a5">HTML or JSON export</text>
+<circle cx="66" cy="185" r="15" fill="#25d366"/>
+<path d="M66 175.5a9.5 9.5 0 0 0-8.2 14.3l-1.3 4.7 4.8-1.3A9.5 9.5 0 1 0 66 175.5z" fill="none" stroke="#fff" stroke-width="1.8" stroke-linejoin="round"/>
+<text x="92" y="182" font-size="15" font-weight="600" fill="#e8eaed">WhatsApp</text>
+<text x="92" y="199" font-size="12" fill="#8b98a5">.zip or .txt</text>
+
+<path class="flow" d="M266 145H350" stroke="#3390ec" stroke-width="2.4" fill="none" marker-end="url(#arrow)"/>
+
+<!-- 2. iRoof.top -->
+<rect x="358" y="40" width="244" height="200" rx="16" fill="#17212b" stroke="#3390ec" stroke-opacity=".7"/>
+<text x="378" y="74" font-size="12" font-weight="600" fill="#8b98a5" letter-spacing=".8">2 ·</text>
+<text class="wm" x="400" y="75" font-size="19" fill="#e8eaed" letter-spacing=".4">i<tspan font-size="9.5" font-weight="300" dx=".7" letter-spacing="0">&amp;</tspan><tspan dx="1.4">roof.top</tspan></text>
+<rect class="p1" x="374" y="92" width="212" height="40" rx="10" fill="#1f2d3b"/>
+<text x="388" y="109" font-size="13.5" font-weight="600" fill="#e8eaed">Style profile</text>
+<text x="388" y="125" font-size="11.5" fill="#8b98a5">length, emoji, habits, samples</text>
+<rect class="p2" x="374" y="138" width="212" height="40" rx="10" fill="#1f2d3b"/>
+<text x="388" y="155" font-size="13.5" font-weight="600" fill="#e8eaed">Tool calls</text>
+<text x="388" y="171" font-size="11.5" fill="#8b98a5">stickers, GIFs, replies, reactions</text>
+<rect class="p3" x="374" y="184" width="212" height="40" rx="10" fill="#1f2d3b"/>
+<text x="388" y="201" font-size="13.5" font-weight="600" fill="#e8eaed">Memory</text>
+<text x="388" y="217" font-size="11.5" fill="#8b98a5">long chats, cached prompt</text>
+
+<!-- the model below -->
+<path class="flow" d="M470 244V266" stroke="#3390ec" stroke-width="2" fill="none" marker-end="url(#arrow)"/>
+<path class="flow back" d="M490 268V246" stroke="#3390ec" stroke-width="2" fill="none" marker-end="url(#arrow)"/>
+<rect x="370" y="274" width="220" height="48" rx="12" fill="#17212b" stroke="#22313f"/>
+<text x="480" y="294" font-size="13.5" font-weight="600" fill="#e8eaed" text-anchor="middle">LLM + MCP tools</text>
+<text x="480" y="311" font-size="11.5" fill="#8b98a5" text-anchor="middle">any OpenAI-compatible API</text>
+
+<path class="flow" d="M606 145H690" stroke="#3390ec" stroke-width="2.4" fill="none" marker-end="url(#arrow)"/>
+
+<!-- 3. the chat goes on -->
+<rect x="698" y="40" width="230" height="282" rx="16" fill="#0e1621" stroke="#22313f"/>
+<path d="M698 56a16 16 0 0 1 16-16h198a16 16 0 0 1 16 16v38H698z" fill="#17212b"/>
+<circle cx="724" cy="67" r="15" fill="#6ec9cb"/>
+<text x="724" y="72" font-size="12" font-weight="600" fill="#fff" text-anchor="middle">JW</text>
+<text x="748" y="64" font-size="14" font-weight="600" fill="#e8eaed">Jonas</text>
+<text class="seen" x="748" y="81" font-size="11.5" fill="#8b98a5">3 · the chat goes on</text>
+<text class="typing" x="748" y="81" font-size="11.5" fill="#6ab3f3">typing…</text>
+
+<g class="b b1"><rect x="712" y="110" width="104" height="34" rx="14" fill="#182533"/><text x="726" y="132" font-size="14" fill="#e8eaed">yesss 🍝</text></g>
+<g class="b b2"><rect x="712" y="150" width="150" height="34" rx="14" fill="#182533"/><text x="726" y="172" font-size="14" fill="#e8eaed">ok wait i get wine</text></g>
+<g class="b b3"><text x="714" y="226" font-size="38">🔥</text></g>
+<g class="b b4"><rect x="770" y="244" width="144" height="34" rx="14" fill="#2b5278"/><text x="784" y="266" font-size="14" fill="#fff">Noted. 7 pm?</text></g>
+</svg>

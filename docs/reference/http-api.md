@@ -1,0 +1,50 @@
+# HTTP API
+
+JSON over HTTP. With `ROOFTOP_PASSWORD` set, the owner API needs HTTP Basic auth.
+
+## Owner
+
+| Method | Path | |
+|---|---|---|
+| GET | `/api/state` | exports, chats, share links, LLM info |
+| POST | `/api/exports` | multipart upload: folder files with relative names, or a `.zip` |
+| GET · DELETE | `/api/exports/{id}` | details with the media library · delete with its chats |
+| POST | `/api/exports/{id}/describe` | describe the media library |
+| POST | `/api/chats` | `{export_id, persona, user?, title?, notes?}` |
+| GET · PATCH · DELETE | `/api/chats/{id}` | timeline (`?limit=`) · title and notes · delete |
+| POST | `/api/chats/{id}/messages` | `{text?, reply_to?, quote?, sticker_id?, gif_id?}` |
+| POST | `/api/chats/{id}/react` | `{message_id, emoji}` (`""` removes) |
+| POST | `/api/chats/{id}/voice` | multipart `file` (wav, ogg, mp3, m4a, webm), `duration?`, `reply_to?` |
+| POST | `/api/chats/{id}/respond` | let the persona act; returns messages and ordered actions |
+| POST | `/api/chats/{id}/regenerate` | drop the persona's last turn and respond again |
+| GET | `/api/chats/{id}/prompt` | the exact `{model, messages, tools}` |
+| GET · POST | `/api/chats/{id}/shares` | list · create share links |
+| PATCH · DELETE | `/api/shares/{id}` | edit (`pin: ""` removes it, `revoke_sessions`) · delete |
+| DELETE | `/api/shares/{id}/sessions/{session}` | end one visitor conversation |
+| GET · PUT | `/api/settings` | LLM, MCP and Telegram (`telegram: {mode: off\|shared\|own, token?}`) |
+| GET · POST | `/api/mcp` · `/api/mcp/reconnect` | MCP status · reconnect |
+| GET · POST | `/api/telegram` · `/api/telegram/link` | bot status and groups · a `t.me` link that adds the bot to a group |
+| GET · PUT | `/api/sharing` | Wi‑Fi and Internet sharing `{lan?, internet?, name?}` (owner UI on localhost only) |
+| GET | `/api/qr?text=…` | a QR code (SVG) |
+
+## Public
+
+No password, for share-link visitors:
+
+| Method | Path | |
+|---|---|---|
+| GET | `/s/{name}[/{token}]` | the visitor page |
+| GET | `/api/s/{name}` | start page info |
+| POST | `/api/s/{name}/sessions` | `{pin?, name?}` → `{token}` |
+| GET | `/api/s/{name}/c/{token}` | timeline |
+| POST | `/api/s/{name}/c/{token}/messages` · `react` · `voice` · `respond` · `regenerate` | as for the owner |
+| GET | `/api/s/{name}/c/{token}/media/{path}` | media the visitor may see |
+
+## Relay hub
+
+| Method | Path | |
+|---|---|---|
+| POST | `/relay/v1/register` | `{name}`, claim or rename (`Authorization: Bearer <secret>`) |
+| GET | `/relay/v1/connect` | the app's WebSocket |
+| GET | `/relay/v1/info` | hub info |
+| * | `/relay/v1/tg/bot<secret>/<method>` | the shared bot's Bot API proxy |

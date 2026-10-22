@@ -189,7 +189,9 @@ def build() -> str:
     P(f'<line x1="{MX}" y1="{WY + 36}" x2="{MX}" y2="{WY + WH}" stroke="#0b1118"/>')
     # sidebar header: the scene of the logo + wordmark
     P(f'<svg x="{SX + 12}" y="{WY + 46}" width="44" height="34" viewBox="300 280 680 440"><path fill="{TEXT}" transform="{lt}" d="{ld}"/></svg>')
-    P(text(SX + 62, WY + 70, "i&roof.top", 18, TEXT, 400))
+    # The wordmark as in the app (.wordmark .amp): a small, light "&" sitting on the baseline.
+    P(f'<text x="{SX + 62}" y="{WY + 70}" font-size="18" fill="{TEXT}" font-weight="400" letter-spacing=".36">'
+      f'i<tspan font-size="9" font-weight="300" dx=".7" letter-spacing="0">&amp;</tspan><tspan dx="1.4">roof.top</tspan></text>')
     for i, ic in enumerate([0, 1]):
         cx = SX + SW - 54 + i * 30
         P(f'<circle cx="{cx}" cy="{WY + 64}" r="8" fill="none" stroke="{MUTED}" stroke-width="1.6"/>')
