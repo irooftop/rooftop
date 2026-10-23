@@ -36,6 +36,8 @@ On the main domain the hub serves the relay API, its own share links and the own
 iroof.top shows a small splash page at `/` instead, with links to the docs and GitHub:
 [`deploy/landing/index.html`](https://github.com/irooftop/rooftop/blob/main/deploy/landing/index.html), a single
 self-contained file (no scripts, fonts or third-party requests). Unknown `<name>.your.domain` links land there too.
+The app demo inside it is [`demo.svg`](https://github.com/irooftop/rooftop/blob/main/demo.svg), inlined as a `data:` image
+by `python3 scripts/landing-demo.py` (run it after changing `demo.svg`).
 Mount the folder into Caddy (`./landing:/srv/landing:ro`) and route only `/`:
 
 ```nginx

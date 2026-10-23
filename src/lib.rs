@@ -6,6 +6,7 @@ pub mod chat;
 pub mod describe;
 pub mod frames;
 pub mod genmedia;
+pub mod imgsize;
 pub mod import;
 pub mod imports;
 pub mod llm;

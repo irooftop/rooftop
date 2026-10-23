@@ -37,6 +37,8 @@ fn start_server(data_dir: std::path::PathBuf) -> Result<SocketAddr> {
         });
         // Share links on the Wi-Fi and at <name>.iroof.top (if turned on), and the Telegram bot.
         rooftop::sharing::init(&state, addr).await;
+        // Media sizes for exports imported before 0.5.3, so the chat doesn't jump.
+        tauri::async_runtime::spawn(rooftop::imgsize::backfill(state.clone()));
         tauri::async_runtime::spawn(async move {
             let _g = state.control.lock().await;
             if let Err(e) = rooftop::tgbot::apply(&state).await {

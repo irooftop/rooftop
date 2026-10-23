@@ -357,7 +357,7 @@ fn parse_media_el(el: &ElementRef, msg: &mut Message) {
             detail = Some(t);
         }
     }
-    msg.media = Some(Media { kind: Some(kind), library_id: None, file, thumb, url, title, status: detail, description: None });
+    msg.media = Some(Media { kind: Some(kind), library_id: None, file, thumb, url, title, status: detail, description: None, size: None });
 }
 
 /// Converts a `.text` element into plain text, keeping line breaks, quotes and links.

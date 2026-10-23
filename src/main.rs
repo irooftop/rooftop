@@ -214,6 +214,8 @@ async fn serve(args: ServeArgs) -> Result<()> {
     if bound.ip().is_loopback() {
         rooftop::sharing::init(&state, bound).await;
     }
+    // Media sizes for exports imported before 0.5.3, so the chat doesn't jump.
+    tokio::spawn(rooftop::imgsize::backfill(state.clone()));
     if env_token.is_none() {
         let st = state.clone();
         tokio::spawn(async move {

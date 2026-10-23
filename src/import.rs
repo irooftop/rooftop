@@ -269,6 +269,7 @@ impl Staged {
                 title: media.title.clone().filter(|t| t != "GIF"),
                 available: path.is_some(),
                 description: None,
+                size: None,
                 uses: Vec::new(),
                 senders: BTreeMap::new(),
             });
@@ -280,6 +281,7 @@ impl Staged {
         }
         self.export.library = library.into_values().collect();
         self.export.library.sort_by(|a, b| b.uses.len().cmp(&a.uses.len()).then(a.id.cmp(&b.id)));
+        crate::imgsize::fill(&self.root, &mut self.export);
         to_place.sort();
         to_place.dedup();
         Ok(to_place)

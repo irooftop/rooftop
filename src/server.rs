@@ -898,6 +898,9 @@ pub(crate) fn view_messages(export: &ChatExport, chat: &Chat, msgs: &[&Message])
                 && let Some(item) = export.library_item(lid)
             {
                 v["media"]["available"] = json!(item.available);
+                if let (Some(s), None) = (item.size, m.media.as_ref().and_then(|x| x.size)) {
+                    v["media"]["size"] = json!(s);
+                }
                 if let Some(d) = &item.description {
                     v["media"]["description"] = json!(d);
                 }

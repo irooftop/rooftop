@@ -85,6 +85,7 @@ impl Ctx<'_> {
             file: Some(rel),
             status: crate::genmedia::wav_duration(&cap.bytes),
             description,
+            size: crate::imgsize::parse(&cap.bytes).map(|(w, h)| [w, h]),
             ..Default::default()
         };
         self.chat.generated.insert(id.clone(), media.clone());
@@ -110,6 +111,7 @@ impl Ctx<'_> {
             title: item.title.clone(),
             status: None,
             description: None,
+            size: item.size,
         })
     }
 

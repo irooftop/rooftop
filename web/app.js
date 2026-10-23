@@ -613,6 +613,10 @@ function mediaHtml(m) {
   const unavailable = md.available === false || (!md.file && !md.url);
   const alt = esc(md.description || md.kind);
   const isVid = p => /\.(mp4|webm|mov|m4v)(\?|$)/i.test(p || "");
+  // The box is reserved from the pixel size the server measured, before anything loads,
+  // so the timeline doesn't jump while it is scrolled (see .media.sized in app.css).
+  const [w, h] = Array.isArray(md.size) ? md.size : [];
+  const sized = w > 0 && h > 0 ? ` sized" style="--w:${w};--h:${h}` : "";
   switch (md.kind) {
     case "sticker": {
       if (unavailable) return `<div class="sticker placeholder">${icon("sticker")}</div>`;
@@ -622,13 +626,13 @@ function mediaHtml(m) {
     }
     case "gif":
       if (unavailable) return `<div class="unavail">GIF unavailable</div>`;
-      return `<div class="media gif">${isVid(md.file || md.url) ? `<video src="${src}" autoplay loop muted playsinline title="${alt}"></video>` : `<img src="${src}" alt="${alt}" referrerpolicy="no-referrer">`}</div>`;
+      return `<div class="media gif${sized}">${isVid(md.file || md.url) ? `<video src="${src}" autoplay loop muted playsinline title="${alt}"></video>` : `<img src="${src}" alt="${alt}" referrerpolicy="no-referrer">`}</div>`;
     case "photo":
       if (unavailable) return `<div class="unavail">${icon("image")}Photo not included in export</div>`;
-      return `<a class="media zoomable" href="${src}" target="_blank" rel="noopener" data-lb="${m.id}" aria-label="Open photo"><img src="${src}" alt="${alt}" loading="lazy"></a>`;
+      return `<a class="media zoomable${sized}" href="${src}" target="_blank" rel="noopener" data-lb="${m.id}" aria-label="Open photo"><img src="${src}" alt="${alt}" loading="lazy"></a>`;
     case "video":
       if (unavailable) return `<div class="unavail">${icon("film")}Video not included in export ${esc(md.status || "")}</div>`;
-      return `<div class="media"><video src="${src}" controls preload="metadata" playsinline ${thumb ? `poster="${thumb}"` : ""}></video></div>`;
+      return `<div class="media video${sized}"><video src="${src}" controls preload="metadata" playsinline ${thumb ? `poster="${thumb}"` : ""}></video></div>`;
     case "round_video":
       if (unavailable) return `<div class="unavail">${icon("record")}Video message ${esc(md.status || "")}</div>`;
       return `<div class="round"><video src="${src}" preload="metadata" playsinline ${thumb ? `poster="${thumb}"` : ""} onclick="this.paused?this.play():this.pause()"></video></div>`;

@@ -84,6 +84,9 @@ pub struct Media {
     /// Export media keep their description in the library instead.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
+    /// Pixel size of media created in a live chat; export media take it from the library.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub size: Option<[u32; 2]>,
 }
 
 impl Media {
@@ -186,6 +189,10 @@ pub struct LibraryItem {
     /// Short visual description (optionally produced by a vision model).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
+    /// Pixel size (width, height) of the photo, or of the poster of a video or GIF, for the
+    /// chat to reserve its box ([`crate::imgsize`]).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub size: Option<[u32; 2]>,
     /// Message ids where this item was used.
     pub uses: Vec<i64>,
     /// Usage count per sender.

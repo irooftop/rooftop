@@ -50,6 +50,7 @@ async fn run(replies: Vec<Value>) -> (Vec<(String, String)>, Vec<String>, usize)
             title: None,
             available: true,
             description: None,
+            size: None,
             uses: vec![1],
             senders: Default::default(),
         }],
@@ -115,6 +116,7 @@ async fn gif_mp4_is_described_from_frames() {
         title: None,
         available: true,
         description: None,
+        size: None,
         uses: vec![1],
         senders: Default::default(),
     };

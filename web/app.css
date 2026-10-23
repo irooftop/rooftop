@@ -229,6 +229,21 @@ button.avatar:focus-visible { outline: 2px solid var(--accent); outline-offset: 
 .bubble.bare .reply { background: var(--in); box-shadow: var(--shadow); }
 .media { display: block; margin: 2px -6px 4px; border-radius: 12px; overflow: hidden; max-width: calc(100% + 12px); }
 .media img, .media video { display: block; max-width: 100%; max-height: 420px; border-radius: 12px; background: rgba(0,0,0,.08); }
+/* Photos, videos and GIFs of known size: the box is fixed before the file loads (no jumps
+   while scrolling). It fits into --media-max-w × --media-max-h, is never narrower than
+   --media-min-w (a very narrow video doesn't squeeze its bubble: it's letterboxed), and
+   follows the bubble when that is narrower. */
+:root { --media-max-w: 400px; --media-max-h: 420px; --media-min-w: 220px; }
+.media.sized {
+  --fit: min(calc(var(--w) * 1px), var(--media-max-w), calc(var(--media-max-h) * var(--w) / var(--h)));
+  --bw: max(var(--media-min-w), var(--fit));
+}
+.media.sized > img, .media.sized > video {
+  width: var(--bw); max-width: 100%; height: auto; aspect-ratio: var(--w) / var(--h); max-height: var(--media-max-h); object-fit: contain;
+}
+/* A video of unknown size gets a steady 16:9 box rather than growing once it loads. */
+.media.video:not(.sized) > video { width: 320px; max-width: 100%; aspect-ratio: 16 / 9; object-fit: contain; }
+.media.video > video, .media.gif.sized > video { background: #000; }
 .bubble.media-only { padding: 4px; }
 .bubble.media-only .media { margin: 0; }
 /* Photo, video or GIF with a caption (or reply/forward header): like Telegram, the media sets
@@ -924,6 +939,7 @@ a.btn { text-decoration: none; color: inherit; }
   .welcome-card { padding: 22px 16px; border-radius: 18px; }
   .dropzone { padding: 16px; }
   .messages { padding-left: max(8px, env(safe-area-inset-left)); padding-right: max(8px, env(safe-area-inset-right)); }
+  :root { --media-max-w: min(320px, 70vw); --media-max-h: 320px; --media-min-w: min(200px, 60vw); }
   .media img, .media video { max-height: 320px; }
   .gif video, .gif img { max-width: 100%; }
   .sticker img, .sticker video { width: 150px; height: 150px; }
