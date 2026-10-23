@@ -325,3 +325,79 @@ async fn nudge_and_regenerate_are_opt_in() {
     let (st, _, _) = call(&env.app, "POST", &format!("/api/s/opt/c/{t2}/respond"), None, None).await;
     assert_ne!(st, StatusCode::FORBIDDEN);
 }
+
+async fn guest_prompt(env: &Env, chat_id: &str) -> String {
+    let (st, p, text) = call(&env.app, "GET", &format!("/api/chats/{chat_id}/prompt"), None, None).await;
+    assert_eq!(st, StatusCode::OK, "{text}");
+    p.to_string()
+}
+
+/// The persona talks to the visitor under the visitor's name, and knows that the export
+/// history and the notes are about the owner, who is someone else.
+#[tokio::test]
+async fn visitors_are_themselves_not_the_owner() {
+    let Some(env) = setup(None).await else { return };
+    // The template chat: the AI is Jonas Weber, the owner plays Priya Nair.
+    let share = create_share(&env, json!({"slug": "who", "display_name": "Jonas", "history": "full"})).await;
+    let (_, s) = start(&env, "who", json!({"name": "Mia"})).await;
+    let t = s["token"].as_str().unwrap().to_string();
+    let (st, _, text) = call(&env.app, "POST", &format!("/api/s/who/c/{t}/messages"), Some(json!({"text": "hi, I'm Mia"})), None).await;
+    assert_eq!(st, StatusCode::OK, "{text}");
+    let (_, list, _) = call(&env.app, "GET", &format!("/api/chats/{}/shares", env.chat_id), None, None).await;
+    let chat_id = list["shares"][0]["sessions"][0]["chat_id"].as_str().unwrap().to_string();
+    let prompt = guest_prompt(&env, &chat_id).await;
+    assert!(prompt.contains("Mia opened a link that Priya Nair shared"), "{prompt}");
+    assert!(prompt.contains("Mia is not Priya Nair"), "{prompt}");
+    assert!(!prompt.contains("continuing a real Telegram conversation with"), "the owner framing is for the owner's chat: {prompt}");
+    assert!(prompt.contains("Priya Nair 21:") || prompt.contains("Priya Nair 2"), "export lines carry the host's name: {prompt}");
+    assert!(prompt.contains(" Mia ") && prompt.contains("hi, I'm Mia"), "{prompt}");
+    // The visitor sees the owner's export messages as someone else's, with names on the bubbles.
+    let (_, chat, _) = call(&env.app, "GET", &format!("/api/s/who/c/{t}"), None, None).await;
+    assert_eq!(chat["export"]["multi"], true);
+    let msgs = chat["messages"].as_array().unwrap();
+    assert!(msgs.iter().any(|m| m["from"] == "Priya Nair" && m["mine"] == false), "the host's messages aren't the visitor's");
+    assert!(msgs.iter().any(|m| m["text"] == "hi, I'm Mia" && m["mine"] == true));
+
+    // A visitor who calls themselves like the owner is told apart.
+    let (_, s2) = start(&env, "who", json!({"name": "priya nair"})).await;
+    let (_, list, _) = call(&env.app, "GET", &format!("/api/chats/{}/shares", env.chat_id), None, None).await;
+    assert_eq!(list["shares"][0]["id"], share["id"]);
+    let names: Vec<&str> = list["shares"][0]["sessions"].as_array().unwrap().iter().filter_map(|g| g["name"].as_str()).collect();
+    assert!(names.contains(&"priya nair (guest)"), "{list}");
+    assert!(s2["token"].is_string());
+}
+
+/// In a room everyone writes and reacts under their own name; each sees their own as theirs.
+#[tokio::test]
+async fn room_visitors_keep_their_names() {
+    let Some(env) = setup(None).await else { return };
+    create_share(&env, json!({"slug": "club", "display_name": "Jonas", "mode": "room"})).await;
+    let (_, a) = start(&env, "club", json!({"name": "Ann"})).await;
+    let (_, b) = start(&env, "club", json!({"name": "Ann"})).await; // same name: kept apart
+    let (ta, tb) = (a["token"].as_str().unwrap().to_string(), b["token"].as_str().unwrap().to_string());
+    let (_, ma, _) = call(&env.app, "POST", &format!("/api/s/club/c/{ta}/messages"), Some(json!({"text": "hello from ann"})), None).await;
+    let (_, mb, _) =
+        call(&env.app, "POST", &format!("/api/s/club/c/{tb}/messages"), Some(json!({"text": "and from the other ann"})), None).await;
+    let bob_msg = mb["messages"][0]["id"].as_i64().unwrap();
+    let (st, _, text) =
+        call(&env.app, "POST", &format!("/api/s/club/c/{ta}/react"), Some(json!({"message_id": bob_msg, "emoji": "👍"})), None).await;
+    assert_eq!(st, StatusCode::OK, "{text}");
+    assert!(ma["messages"][0]["id"].is_i64());
+
+    let (_, va, _) = call(&env.app, "GET", &format!("/api/s/club/c/{ta}"), None, None).await;
+    let (_, vb, _) = call(&env.app, "GET", &format!("/api/s/club/c/{tb}"), None, None).await;
+    let find = |v: &Value, text: &str| v["messages"].as_array().unwrap().iter().find(|m| m["text"] == text).cloned().unwrap();
+    assert_eq!(find(&va, "hello from ann")["mine"], true);
+    let other = find(&va, "and from the other ann");
+    assert_eq!((other["mine"].clone(), other["from"].clone()), (json!(false), json!("Ann 2")), "{other}");
+    assert_eq!(other["reactions"][0]["mine"], true, "Ann's own reaction: {other}");
+    let theirs = find(&vb, "and from the other ann");
+    assert_eq!((theirs["mine"].clone(), theirs["reactions"][0]["mine"].clone()), (json!(true), json!(false)), "{theirs}");
+
+    let (_, list, _) = call(&env.app, "GET", &format!("/api/chats/{}/shares", env.chat_id), None, None).await;
+    let room = list["shares"][0]["sessions"][0]["chat_id"].as_str().unwrap().to_string();
+    let prompt = guest_prompt(&env, &room).await;
+    assert!(prompt.contains("group chat with people who opened a link"), "{prompt}");
+    assert!(prompt.contains(" Ann ") && prompt.contains(" Ann 2 "), "each line names its sender: {prompt}");
+    assert!(prompt.contains("Ann 2 reacted 👍") || prompt.contains("Ann reacted 👍"), "{prompt}");
+}

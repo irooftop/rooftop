@@ -205,6 +205,38 @@ pub fn verify_pin(stored: &str, pin: &str) -> bool {
     argon2::Argon2::default().hash_password_into(pin.as_bytes(), &salt, &mut out).is_ok() && ct_eq(&out, &hash)
 }
 
+/// What the persona calls a visitor who gave no name.
+pub const GUEST_NAME: &str = "Guest";
+/// The `user` of a room conversation (its visitors write under their own names).
+pub const ROOM_USER: &str = "Visitors";
+
+impl Share {
+    /// The name a visitor goes by in the conversation: what they typed in, else "Guest"
+    /// (in a room "Guest 3", so several unnamed visitors stay apart).
+    pub fn visitor_name(&self, session: &GuestSession) -> String {
+        match &session.name {
+            Some(n) => n.clone(),
+            None if self.mode == ShareMode::Room => {
+                let n = self.sessions.iter().position(|s| s.id == session.id).unwrap_or(self.sessions.len()) + 1;
+                format!("{GUEST_NAME} {n}")
+            }
+            None => GUEST_NAME.to_string(),
+        }
+    }
+}
+
+/// `name`, changed where it would be mistaken for someone else in the conversation: the
+/// persona's or the owner's name gets "(guest)" ("Alex (guest)"), another visitor's in a
+/// room a number ("Ann 2").
+pub fn distinct_name(name: String, people: &[&str], visitors: &[&str]) -> String {
+    let clash = |n: &str| people.iter().chain(visitors).any(|t| t.eq_ignore_ascii_case(n));
+    let base = if people.iter().any(|t| t.eq_ignore_ascii_case(&name)) { format!("{name} (guest)") } else { name };
+    if !clash(&base) {
+        return base;
+    }
+    (2..).map(|i| format!("{base} {i}")).find(|n| !clash(n)).expect("a free name")
+}
+
 pub fn new_session(chat_id: &str, name: Option<String>) -> GuestSession {
     let now = now_string();
     GuestSession {

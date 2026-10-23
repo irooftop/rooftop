@@ -917,6 +917,11 @@ const MAX_PAGE: usize = 2000;
 
 /// UI view of the given timeline messages with merged reactions.
 pub(crate) fn view_messages(export: &ChatExport, chat: &Chat, msgs: &[&Message]) -> Vec<Value> {
+    view_messages_as(export, chat, &chat.user, msgs)
+}
+
+/// [`view_messages`] for `viewer`: their messages and reactions are the `mine` ones.
+pub(crate) fn view_messages_as(export: &ChatExport, chat: &Chat, viewer: &str, msgs: &[&Message]) -> Vec<Value> {
     let names: Vec<String> = export.participants.iter().map(|p| p.name.clone()).collect();
     // message id -> list of (reactor, emoji), one reaction per reactor.
     let mut reactions: HashMap<i64, Vec<(String, String)>> = HashMap::new();
@@ -953,9 +958,9 @@ pub(crate) fn view_messages(export: &ChatExport, chat: &Chat, msgs: &[&Message])
                 match agg.iter_mut().find(|(e, _, _)| *e == emoji) {
                     Some(a) => {
                         a.1 += 1;
-                        a.2 |= from == chat.user;
+                        a.2 |= from == viewer;
                     }
-                    None => agg.push((emoji, 1, from == chat.user)),
+                    None => agg.push((emoji, 1, from == viewer)),
                 }
             }
             for (emoji, count) in unknown.get(&m.id).cloned().unwrap_or_default() {
@@ -963,7 +968,7 @@ pub(crate) fn view_messages(export: &ChatExport, chat: &Chat, msgs: &[&Message])
             }
             let mut v = serde_json::to_value(m).unwrap_or_default();
             v["reactions"] = json!(agg.iter().map(|(e, c, mine)| json!({"emoji": e, "count": c, "mine": mine})).collect::<Vec<_>>());
-            v["mine"] = json!(m.from == chat.user);
+            v["mine"] = json!(m.from == viewer);
             v["persona"] = json!(m.from == chat.persona);
             v["live"] = json!(m.id > max_export_id);
             if let Some(lid) = m.media.as_ref().and_then(|x| x.library_id.as_deref())
@@ -1045,11 +1050,14 @@ async fn get_chat(State(st): S, Path(id): Path<String>, Query(q): Query<ChatQuer
         .filter(|i| matches!(i.kind, MediaKind::Sticker | MediaKind::Gif) && i.available)
         .map(|i| json!({"id": i.id, "kind": i.kind, "file": i.file, "thumb": i.thumb, "description": i.description, "uses": i.uses.len()}))
         .collect();
+    // Visitor conversations: the owner, the persona and visitors, so names on the bubbles.
+    let mut export_view = export_summary(&rec);
+    export_view["multi"] = json!(rec.export.participants.len() > 2 || chat.guest.is_some());
     Ok(Json(json!({
         "chat": chat_summary(&chat, Some(&rec)),
         "notes": chat.notes,
         "voice": chat.voice,
-        "export": export_summary(&rec),
+        "export": export_view,
         "messages": messages,
         "total": total,
         "has_more": has_more,
@@ -1151,7 +1159,7 @@ pub(crate) async fn add_message(
     id: &str,
     req: PostMessage,
     max_chars: usize,
-    author: Option<&str>,
+    author: Option<(&str, &str)>,
 ) -> Result<i64, ApiError> {
     let (rec, chat) = st.snapshot(id).await?;
     let export = &rec.export;
@@ -1184,7 +1192,9 @@ pub(crate) async fn add_message(
     };
     let quote = req.quote.map(|q| q.trim().chars().take(1000).collect::<String>()).filter(|q| !q.is_empty() && reply_to.is_some());
     let msg_id = st.alloc_ids(id, 1).await?;
-    let m = Message { id: msg_id, from: chat.user.clone(), date: Some(now_string()), reply_to, quote, text, media, ..Default::default() };
+    // In a room each visitor writes under their own name (and session, for "mine").
+    let from = author.map_or_else(|| chat.user.clone(), |(_, name)| name.to_string());
+    let m = Message { id: msg_id, from, date: Some(now_string()), reply_to, quote, text, media, ..Default::default() };
     let ev = Event::Message(m);
     st.append_events(id, std::slice::from_ref(&ev)).await?;
     if let Some(a) = author {
@@ -1192,7 +1202,7 @@ pub(crate) async fn add_message(
         if let Some(c) = db.chats.get_mut(id)
             && let Some(g) = c.guest.as_mut()
         {
-            g.authors.insert(msg_id, a.to_string());
+            g.authors.insert(msg_id, a.0.to_string());
             st.paths.save_chat(c)?;
         }
     }
@@ -1216,7 +1226,7 @@ pub(crate) async fn add_voice(
     id: &str,
     mut mp: Multipart,
     max_bytes: usize,
-    author: Option<&str>,
+    author: Option<(&str, &str)>,
 ) -> Result<i64, ApiError> {
     let (rec, chat) = st.snapshot(id).await?;
     let (mut bytes, mut duration, mut reply_to) = (Vec::new(), None::<f64>, None::<i64>);
@@ -1267,14 +1277,15 @@ pub(crate) async fn add_voice(
     let media =
         crate::model::Media { kind: Some(MediaKind::Voice), file: Some(rel), status, description: transcript, ..Default::default() };
     let msg_id = st.alloc_ids(id, 1).await?;
-    let m = Message { id: msg_id, from: chat.user.clone(), date: Some(now_string()), reply_to, media: Some(media), ..Default::default() };
+    let from = author.map_or_else(|| chat.user.clone(), |(_, name)| name.to_string());
+    let m = Message { id: msg_id, from, date: Some(now_string()), reply_to, media: Some(media), ..Default::default() };
     st.append_events(id, &[Event::Message(m)]).await?;
     if let Some(a) = author {
         let mut db = st.db.write().await;
         if let Some(c) = db.chats.get_mut(id)
             && let Some(g) = c.guest.as_mut()
         {
-            g.authors.insert(msg_id, a.to_string());
+            g.authors.insert(msg_id, a.0.to_string());
             st.paths.save_chat(c)?;
         }
     }
@@ -1288,11 +1299,12 @@ pub(crate) struct PostReaction {
 }
 
 async fn post_reaction(State(st): S, Path(id): Path<String>, Json(req): Json<PostReaction>) -> ApiResult {
-    add_reaction(&st, &id, req).await?;
+    add_reaction(&st, &id, req, None).await?;
     Ok(Json(json!({"ok": true})))
 }
 
-pub(crate) async fn add_reaction(st: &Arc<AppState>, id: &str, req: PostReaction) -> Result<(), ApiError> {
+/// `from`: who reacts, when not the chat's user (a visitor in a room).
+pub(crate) async fn add_reaction(st: &Arc<AppState>, id: &str, req: PostReaction, from: Option<&str>) -> Result<(), ApiError> {
     let (rec, chat) = st.snapshot(id).await?;
     if crate::chat::find_message(&rec.export, &chat.events, req.message_id).is_none() {
         return Err(bad("message not found"));
@@ -1301,7 +1313,8 @@ pub(crate) async fn add_reaction(st: &Arc<AppState>, id: &str, req: PostReaction
     if emoji.chars().count() > 8 {
         return Err(bad("invalid emoji"));
     }
-    let ev = Event::Reaction { target: req.message_id, removed: emoji.is_empty(), emoji, from: chat.user.clone(), date: now_string() };
+    let from = from.map_or_else(|| chat.user.clone(), str::to_string);
+    let ev = Event::Reaction { target: req.message_id, removed: emoji.is_empty(), emoji, from, date: now_string() };
     st.append_events(id, &[ev]).await?;
     Ok(())
 }

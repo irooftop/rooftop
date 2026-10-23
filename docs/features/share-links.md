@@ -26,6 +26,22 @@ descriptions, prompt, token usage or other chats.
 
 You can **Read** every visitor conversation in the Share dialog, and **End** one to revoke it.
 
+## Who the persona talks to
+
+A visitor is not you. When Mia opens your link, the persona knows that **Mia** is writing, that the link
+came from you, and that the history and your notes are about you and them, not about Mia: it meets her
+as someone new. Without a name she is just a guest.
+
+| | The persona sees |
+|---|---|
+| Private link | one conversation with the visitor, under the name they gave (or "Guest") |
+| Shared room | a group chat: every message carries its sender's name, and people can join at any time |
+| Your export history | your messages under your name, then the visitor's, so they're never mixed up |
+
+The system prompt is fixed for each conversation, so providers keep caching it: the visitor's name is set
+when the conversation starts, and in a room the names travel with the messages. A visitor who calls themselves
+like the persona or like you becomes e.g. "Alex (guest)", a second "Ann" in a room "Ann 2".
+
 ## Invites
 
 | Link | Opens |

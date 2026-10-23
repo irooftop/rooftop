@@ -699,8 +699,12 @@ function bubbleHtml(m, prev, next) {
     const lp = m.link_preview;
     inner += `<a class="lp" href="${esc(lp.url)}" target="_blank" rel="noopener noreferrer">${lp.site ? `<div class="s">${esc(lp.site)}</div>` : ""}${lp.title ? `<div class="t">${esc(lp.title)}</div>` : ""}${lp.description ? `<div class="d">${esc(lp.description)}</div>` : ""}${lp.photo ? `<img src="${mediaUrl(lp.photo)}" alt="" loading="lazy">` : ""}</a>`;
   }
-  inner += `<span class="meta">${m.edited ? "edited " : ""}${fmtTime(m.date)}</span>`;
-  if (m.reactions?.length) inner += `<div class="reactions">${m.reactions.map(r => `<button class="reaction ${r.mine ? "mine" : ""}" data-react="${esc(r.emoji)}" data-id="${m.id}">${esc(r.emoji)}${r.count > 1 ? `<span class="c">${r.count}</span>` : ""}</button>`).join("")}</div>`;
+  const meta = `<span class="meta">${m.edited ? "edited " : ""}${fmtTime(m.date)}</span>`;
+  const reactions = m.reactions?.length ? `<div class="reactions">${m.reactions.map(r => `<button class="reaction ${r.mine ? "mine" : ""}" data-react="${esc(r.emoji)}" data-id="${m.id}">${esc(r.emoji)}${r.count > 1 ? `<span class="c">${r.count}</span>` : ""}</button>`).join("")}</div>` : "";
+  // Like Telegram: reactions on the left and the time on the right of one line. Stickers
+  // and lone photos keep the time on the picture, with the reactions under it.
+  if (reactions && !bare && !mediaOnly) inner += `<div class="foot">${reactions}${meta}</div>`;
+  else inner += meta + reactions;
   const person = S.chat.export.participants.find(p => p.name === m.from);
   return `<div class="row ${mine ? "mine" : ""} ${startGroup ? "group-start" : ""} ${endGroup ? "group-end" : ""}" data-row="${m.id}">
     ${mine ? "" : profileAvatar(m.from, person?.avatar)}
@@ -2253,11 +2257,17 @@ function renderShares() {
       <div class="chips">${chips}</div>
       ${sessions}
     </div>`;
-  }).join("") : `<div class="share-empty"><span class="se-badge">${icon("link")}</span><b>No links yet</b><span>Create a link so friends can talk to ${esc(S.chat?.chat.persona || "this persona")}. You decide who can enter, what they see and how many answers they get.</span></div>`;
+  }).join("") + shareTip() : `<div class="share-empty"><span class="se-badge">${icon("link")}</span><b>No links yet</b><span>Create a link so friends can talk to ${esc(S.chat?.chat.persona || "this persona")}. You decide who can enter, what they see and how many answers they get.</span></div>`;
   for (const c of $$("#shList .share-card")) {
     const d = c.querySelector("details.sessions"), was = opened.get(c.dataset.id);
     if (d && was != null) d.open = was;
   }
+}
+// Presets in the fragment let a friend skip the start page: /s/name#name=Mia&pin=1234.
+function shareTip() {
+  const sh = SH.shares[0], pin = SH.shares.some(x => x.has_pin);
+  const example = `${hostOf(shareUrl(sh))}#name=Mia${pin ? "&pin=1234" : ""}`;
+  return `<p class="share-tip">${icon("sparkle")}<span>Nothing to type for your friend: add <code>#name=Mia</code>${pin ? " and <code>&amp;pin=…</code>" : ""} to a link, e.g. <code class="mono">${esc(example)}</code>, and they go straight into the chat. The part after <code>#</code> never reaches the server.</span></p>`;
 }
 // The QR code of a link, in its own small dialog over the list, with a switch between addresses.
 const QR = { sh: null, kind: null, url: "" };

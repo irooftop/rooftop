@@ -920,7 +920,8 @@ async fn owner_reply(st: &Arc<AppState>, thread: &Thread, text: &str) -> Result<
     let (rec, chat) = st.snapshot(&thread.chat_id).await?;
     // Answering an older visitor message shows as a reply to it, answering the latest one doesn't.
     let last_user = chat.events.iter().rev().find_map(|e| match e {
-        Event::Message(m) if m.from == chat.user => Some(m.id),
+        // A visitor's message: in a room visitors write under their own names.
+        Event::Message(m) if m.from != chat.persona && !m.service => Some(m.id),
         _ => None,
     });
     let reply_to = thread.msg_id.filter(|id| Some(*id) != last_user && crate::chat::find_message(&rec.export, &chat.events, *id).is_some());

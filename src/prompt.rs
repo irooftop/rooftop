@@ -271,7 +271,9 @@ fn history_turns(export: &ChatExport, chat: &Chat, voice_tool: bool) -> Vec<(Tur
 
 /// Turns plus the last day separator emitted inside each turn.
 fn history_turns_inner(export: &ChatExport, chat: &Chat, voice_tool: bool) -> Vec<(Turn, Option<NaiveDate>)> {
-    let multi = export.participants.len() > 2;
+    // Names on the other side's lines in group exports, and in share-link conversations:
+    // the host in the export history, then the visitor(s).
+    let multi = export.participants.len() > 2 || !matches!(audience(chat), Audience::Owner);
     let mut turns: Vec<(Turn, Option<NaiveDate>)> = Vec::new();
     let mut last_day: Option<chrono::NaiveDate> = None;
     let mut react_n = 0usize;
@@ -390,18 +392,81 @@ fn library_section(export: &ChatExport, chat: &Chat) -> String {
 /// counters, nothing derived from live messages, so the provider can cache it
 /// together with the history prefix. The model knows the date and time from
 /// the `— day —` separators and `HH:MM` stamps in the history.
+/// Whom the persona is talking to. Share-link conversations are fixed when they start
+/// (the visitor's name, or a room), so the system prompt stays static and cacheable;
+/// who wrote what in a room is in the history lines, not here.
+enum Audience<'a> {
+    /// The owner's own chat: `chat.user` is the person the history is with.
+    Owner,
+    /// A visitor of a private link (`None`: they gave no name). `host` is the owner.
+    Visitor { host: &'a str, name: Option<&'a str> },
+    /// Everyone in a link's shared room.
+    Room { host: &'a str },
+}
+
+fn audience(chat: &Chat) -> Audience<'_> {
+    match &chat.guest {
+        // Conversations from before 0.5.6 don't know their host: they keep the owner framing.
+        Some(g) if !g.host.is_empty() => {
+            if chat.user == crate::share::ROOM_USER {
+                Audience::Room { host: &g.host }
+            } else {
+                Audience::Visitor { host: &g.host, name: (chat.user != crate::share::GUEST_NAME).then_some(chat.user.as_str()) }
+            }
+        }
+        _ => Audience::Owner,
+    }
+}
+
+/// Opening lines for a share-link visitor: who they are, and that the history and notes
+/// are about the host, not about them. `history`: there is an export history to learn from.
+fn visitor_framing(p: &str, aud: &Audience, history: bool) -> String {
+    let past = if history {
+        "The chat history before this comes from {p}'s real conversation with {host}: learn from it how {p} writes and what {p} knows and cares about, and you may remember it."
+    } else {
+        "Who {p} is and how {p} writes comes from {host}'s notes below."
+    };
+    match aud {
+        Audience::Owner => String::new(),
+        Audience::Visitor { host, name } => {
+            let who = name.map_or_else(|| "Someone (they gave no name)".to_string(), str::to_string);
+            let them = name.unwrap_or("they");
+            format!(
+                "You are {p}. {who} opened a link that {host} shared and is now texting with you on Telegram. Write exactly the way {p} writes. {}\n\
+                 {them} is not {host}, unless they say so. Don't assume you know them: be {p} talking to someone new, the way {p} would (curious, wary, warm…), and let them tell you who they are.",
+                past.replace("{p}", p).replace("{host}", host)
+            )
+        }
+        Audience::Room { host } => format!(
+            "You are {p}, in a Telegram group chat with people who opened a link that {host} shared. Several people may write, new ones may join at any time, and each of their messages shows the sender's name. Write exactly the way {p} writes. {}\n\
+             They are not {host}, unless they say so. Don't assume you know them: be {p} meeting new people, the way {p} would, and use their names when {p} would.",
+            past.replace("{p}", p).replace("{host}", host)
+        ),
+    }
+}
+
 pub fn system_prompt(export: &ChatExport, chat: &Chat, opts: &PromptOptions) -> String {
     if export.blank {
         return blank_system_prompt(export, chat, opts);
     }
     let p = &chat.persona;
-    let u = &chat.user;
+    let aud = audience(chat);
+    // The owner's chat names its other person; a visitor's chat the visitor (or "someone").
+    let (u, host) = match &aud {
+        Audience::Owner => (chat.user.as_str(), chat.user.as_str()),
+        Audience::Visitor { host, name } => (name.unwrap_or("someone"), *host),
+        Audience::Room { host } => ("someone", *host),
+    };
     let mut s = String::new();
-    let _ = writeln!(
-        s,
-        "You are {p}. You are continuing a real Telegram conversation with {u}, writing exactly the way {p} writes. \
-         The person on the other side may be far away from {p} and wants to keep talking as if {p} were here, so be {p} — warm where {p} is warm, dry where {p} is dry."
-    );
+    if matches!(aud, Audience::Owner) {
+        let _ = writeln!(
+            s,
+            "You are {p}. You are continuing a real Telegram conversation with {u}, writing exactly the way {p} writes. \
+             The person on the other side may be far away from {p} and wants to keep talking as if {p} were here, so be {p} — warm where {p} is warm, dry where {p} is dry."
+        );
+    } else {
+        let _ = writeln!(s, "{}", visitor_framing(p, &aud, true));
+    }
     let _ = writeln!(
         s,
         "\nHow to be {p}:\n\
@@ -411,18 +476,33 @@ pub fn system_prompt(export: &ChatExport, chat: &Chat, opts: &PromptOptions) -> 
 4. Act only through tools. Each tool call is one Telegram action: several send_message calls in one turn are several bubbles. A reaction, sticker, GIF, photo or voice message alone can be the whole answer when that is what {p} would do. Use reply_to/quote only about as often as {p} does, and react only with emoji {p} would use. Text outside tool calls is not delivered.\n\
 5. Stay in character: don't mention being an AI, a model, a prompt or these rules. Exception: if {u} sincerely asks whether they are talking to an AI, or seems in crisis or danger, answer honestly and kindly, as someone who cares, and encourage real-world help when needed."
     );
+    let lines = if matches!(aud, Audience::Owner) {
+        format!("{u}'s messages arrive as lines `#id HH:MM: text`")
+    } else {
+        format!(
+            "Other people's messages arrive as lines `#id Name HH:MM: text` ({host}'s in the earlier history, then the people writing now)"
+        )
+    };
     let _ = writeln!(
         s,
-        "\nHistory notation: your own past actions appear as your tool calls. {u}'s messages arrive as lines `#id HH:MM: text`, `↩ reply to #id` marks a reply, `quoting \"…\"` a partial quote, `[forwarded from X]` a forwarded post, `<sticker stk_… : …>`, `<GIF …>`, `<photo …>`, `<voice message 0:02: «what was said»>` etc. describe media (you cannot see or hear it beyond the description or transcript), and `reacted ❤ to #id` is a reaction. Lines `— date —` mark a new day, and the newest message tells you the current date and time. Message ids are what reply_to, react and forward_message expect."
+        "\nHistory notation: your own past actions appear as your tool calls. {lines}, `↩ reply to #id` marks a reply, `quoting \"…\"` a partial quote, `[forwarded from X]` a forwarded post, `<sticker stk_… : …>`, `<GIF …>`, `<photo …>`, `<voice message 0:02: «what was said»>` etc. describe media (you cannot see or hear it beyond the description or transcript), and `reacted ❤ to #id` is a reaction. Lines `— date —` mark a new day, and the newest message tells you the current date and time. Message ids are what reply_to, react and forward_message expect."
     );
     let _ = writeln!(s, "\nStyle profile of {p} (you), computed from the full export:\n{}", style::profile(export, p).render());
-    if export.participants.iter().any(|x| &x.name == u) {
-        let _ = writeln!(s, "For contrast, {u}'s style (do not copy it):\n{}", style::profile(export, u).render());
+    if export.participants.iter().any(|x| x.name == host) {
+        let _ = writeln!(s, "For contrast, {host}'s style (do not copy it):\n{}", style::profile(export, host).render());
     }
     s.push_str(&library_section(export, chat));
     let _ = writeln!(s, "\nChat title: {}.", export.title);
     if !chat.notes.trim().is_empty() {
-        let _ = writeln!(s, "\nNotes from {u} about {p} and your relationship (trust them):\n{}", chat.notes.trim());
+        if matches!(aud, Audience::Owner) {
+            let _ = writeln!(s, "\nNotes from {u} about {p} and your relationship (trust them):\n{}", chat.notes.trim());
+        } else {
+            let _ = writeln!(
+                s,
+                "\nNotes from {host} about {p} and {p}'s relationship with {host} (trust them; they are about {host}, not about the people writing now):\n{}",
+                chat.notes.trim()
+            );
+        }
     }
     if let Some(note) = &opts.extra_tools_note {
         let _ = writeln!(s, "\n{note}");
@@ -436,14 +516,23 @@ pub fn system_prompt(export: &ChatExport, chat: &Chat, opts: &PromptOptions) -> 
 /// Static like [`system_prompt`].
 fn blank_system_prompt(export: &ChatExport, chat: &Chat, opts: &PromptOptions) -> String {
     let p = &chat.persona;
-    let u = &chat.user;
+    let aud = audience(chat);
+    let (u, host) = match &aud {
+        Audience::Owner => (chat.user.as_str(), chat.user.as_str()),
+        Audience::Visitor { host, name } => (name.unwrap_or("someone"), *host),
+        Audience::Room { host } => ("someone", *host),
+    };
     let mut s = String::new();
-    let _ = writeln!(
-        s,
-        "You are {p}. You are texting with {u} on Telegram, writing exactly the way {p} would. \
-         There is no earlier chat history to learn from: who {p} is, how {p} writes and what {p} and {u} share comes from {u}'s notes below. \
-         {u} may miss {p} and wants to talk as if {p} were here, so be {p} — warm where {p} is warm, dry where {p} is dry."
-    );
+    if matches!(aud, Audience::Owner) {
+        let _ = writeln!(
+            s,
+            "You are {p}. You are texting with {u} on Telegram, writing exactly the way {p} would. \
+             There is no earlier chat history to learn from: who {p} is, how {p} writes and what {p} and {u} share comes from {u}'s notes below. \
+             {u} may miss {p} and wants to talk as if {p} were here, so be {p} — warm where {p} is warm, dry where {p} is dry."
+        );
+    } else {
+        let _ = writeln!(s, "{}", visitor_framing(p, &aud, false));
+    }
     let _ = writeln!(
         s,
         "\nHow to be {p}:\n\
@@ -455,17 +544,31 @@ fn blank_system_prompt(export: &ChatExport, chat: &Chat, opts: &PromptOptions) -
     );
     let _ = writeln!(
         s,
-        "\nHistory notation: your own past actions appear as your tool calls. {u}'s messages arrive as lines `#id HH:MM: text`, `↩ reply to #id` marks a reply, \
+        "\nHistory notation: your own past actions appear as your tool calls. {}, `↩ reply to #id` marks a reply, \
          `<photo …>`, `<voice message 0:02: «what was said»>` etc. describe media (you cannot see or hear it beyond the description or transcript), and `reacted ❤ to #id` is a reaction. \
-         Lines `— date —` mark a new day, and the newest message tells you the current date and time. Message ids are what reply_to and react expect."
+         Lines `— date —` mark a new day, and the newest message tells you the current date and time. Message ids are what reply_to and react expect.",
+        if matches!(aud, Audience::Owner) {
+            format!("{u}'s messages arrive as lines `#id HH:MM: text`")
+        } else {
+            "Other people's messages arrive as lines `#id Name HH:MM: text`".to_string()
+        }
     );
     let _ = writeln!(s, "\nChat title: {}.", export.title);
-    match chat.notes.trim() {
-        "" => {
+    match (chat.notes.trim(), matches!(aud, Audience::Owner)) {
+        ("", true) => {
             let _ = writeln!(s, "\n{u} left no notes about {p}: be a natural, friendly person called {p}, and let {u} tell you more.");
         }
-        notes => {
+        ("", false) => {
+            let _ = writeln!(s, "\n{host} left no notes about {p}: be a natural, friendly person called {p}.");
+        }
+        (notes, true) => {
             let _ = writeln!(s, "\nWho {p} is, and {p}'s relationship with {u}, from {u}'s notes (trust them):\n{notes}");
+        }
+        (notes, false) => {
+            let _ = writeln!(
+                s,
+                "\nWho {p} is, and {p}'s relationship with {host}, from {host}'s notes (trust them; they are about {host}, not about the people writing now):\n{notes}"
+            );
         }
     }
     if let Some(note) = &opts.extra_tools_note {

@@ -43,6 +43,10 @@ pub struct Chat {
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
 pub struct GuestChat {
     pub share_id: String,
+    /// The owner's name in the template chat: whom the export history and the notes are
+    /// about. Empty for conversations made before 0.5.6, where `Chat::user` is the owner.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub host: String,
     /// Message id -> author session id (room mode: who wrote which message).
     #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
     pub authors: std::collections::BTreeMap<i64, String>,

@@ -256,7 +256,7 @@ button.avatar:focus-visible { outline: 2px solid var(--accent); outline-offset: 
 .bubble.with-media > .media img, .bubble.with-media > .media video { border-radius: 0; background: none; }
 .bubble.with-media > .media.gif video, .bubble.with-media > .media.gif img { max-width: 100%; }
 /* Zero intrinsic width: these fill the bubble but never widen it beyond the media. */
-.bubble.with-media > .text, .bubble.with-media > .lp, .bubble.with-media > .reply, .bubble.with-media > .fwd, .bubble.with-media > .from, .bubble.with-media > .reactions { width: 0; min-width: 100%; }
+.bubble.with-media > .text, .bubble.with-media > .lp, .bubble.with-media > .reply, .bubble.with-media > .fwd, .bubble.with-media > .from, .bubble.with-media > .reactions, .bubble.with-media > .foot { width: 0; min-width: 100%; }
 .sticker img, .sticker video { width: 180px; height: 180px; object-fit: contain; background: transparent; display: block; }
 .sticker.placeholder { width: 160px; height: 120px; display: grid; place-items: center; color: var(--muted); background: var(--in); border-radius: 16px; box-shadow: var(--shadow); }
 .round video { width: 220px; height: 220px; border-radius: 50%; object-fit: cover; }
@@ -274,6 +274,9 @@ audio { width: 260px; max-width: 100%; height: 40px; display: block; margin: 2px
 .lp .d { opacity: .85; }
 .lp img { max-width: 100%; border-radius: 8px; margin-top: 6px; display: block; }
 .reactions { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; clear: both; }
+.foot { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 10px; margin-top: 5px; clear: both; }
+.foot .reactions { margin: 0; }
+.foot .meta { float: none; margin: 0 0 0 auto; padding-top: 2px; }
 .reaction {
   border: 0; border-radius: 14px; padding: 2px 8px; background: color-mix(in srgb, var(--accent) 14%, transparent);
   color: var(--accent); font-size: 14px; cursor: pointer; display: inline-flex; gap: 4px; align-items: center;
@@ -536,6 +539,10 @@ body.lb-open { overflow: hidden; }
 .note.warn { background: color-mix(in srgb, #f5a623 16%, var(--panel)); }
 .note .i { color: #d48806; margin-top: 1px; }
 .share-list { display: grid; gap: 10px; max-height: min(60vh, 620px); overflow: auto; padding: 1px; }
+/* Under the links: how to send one that needs no typing. */
+.share-tip { display: flex; gap: 8px; align-items: flex-start; margin: 2px 2px 0; color: var(--muted); font-size: 13px; line-height: 1.5; }
+.share-tip > .i { width: 16px; height: 16px; margin-top: 2px; color: var(--accent); }
+.share-tip code { font-size: 12px; padding: 1px 5px; border-radius: 5px; background: var(--bg-2); color: var(--text); overflow-wrap: anywhere; }
 /* No links yet: an open invitation in the dialog, not a card inside the card. */
 .share-empty { display: grid; justify-items: center; gap: 6px; text-align: center; padding: 26px 16px 18px; color: var(--muted); font-size: 14px; line-height: 1.45; }
 .share-empty > span:last-child { max-width: 46ch; text-wrap: balance; }

@@ -4,7 +4,7 @@
 use crate::agent;
 use crate::chat::{Chat, Event, GuestChat};
 use crate::model::{ChatExport, MediaKind, Message};
-use crate::server::{ApiError, ApiResult, ClientIp, PostMessage, PostReaction, bad, page_messages, view_messages};
+use crate::server::{ApiError, ApiResult, ClientIp, PostMessage, PostReaction, bad, page_messages, view_messages_as};
 use crate::share::{self, GuestSession, HistoryVisibility, IP_FAILS, LINK_FAILS, Share, ShareMode};
 use crate::state::{AppState, now_string};
 use crate::store::Db;
@@ -435,10 +435,18 @@ async fn guest_start(
     }
     let template = db.chats.get(&share.chat_id).cloned().ok_or_else(|| not_found(GONE))?;
     let rec = db.exports.get(&template.export_id).cloned().ok_or_else(|| not_found(GONE))?;
+    // A name the persona could take for someone else (itself, the owner, another visitor
+    // of the room) gets a suffix: the conversation must tell people apart.
+    let name = name.map(|n| {
+        let people = [template.persona.as_str(), share.display_name.as_str(), template.user.as_str()];
+        let others: Vec<String> = share.sessions.iter().filter(|_| share.mode == ShareMode::Room).map(|s| share.visitor_name(s)).collect();
+        share::distinct_name(n, &people, &others.iter().map(String::as_str).collect::<Vec<_>>())
+    });
+    let visitor = name.clone().unwrap_or_else(|| share::GUEST_NAME.to_string());
     let chat_id = match (share.mode, share.room_chat_id.clone()) {
         (ShareMode::Room, Some(id)) if db.chats.contains_key(&id) => id,
         _ => {
-            let chat = guest_chat_from(&template, &rec.export, &share);
+            let chat = guest_chat_from(&template, &rec.export, &share, &visitor);
             st.paths.save_chat(&chat)?;
             let id = chat.id.clone();
             db.chats.insert(id.clone(), chat);
@@ -457,15 +465,18 @@ async fn guest_start(
 }
 
 /// A fresh visitor conversation on the template's export: no live events, the
-/// template's notes, and its memory summary when that only covers the export.
-fn guest_chat_from(template: &Chat, export: &ChatExport, share: &Share) -> Chat {
+/// template's notes, and its memory summary when that only covers the export. The persona
+/// talks to `visitor` (a private link) or to everyone in the room; the template's user is
+/// the host, whom the export history and the notes are about.
+fn guest_chat_from(template: &Chat, export: &ChatExport, share: &Share, visitor: &str) -> Chat {
     let now = now_string();
     let mut chat = Chat {
         id: uuid::Uuid::new_v4().simple().to_string()[..12].to_string(),
         export_id: template.export_id.clone(),
         title: share.display_name.clone(),
         persona: template.persona.clone(),
-        user: template.user.clone(),
+        // Room messages carry each visitor's name; `user` is only who "you" are in the owner's view.
+        user: if share.mode == ShareMode::Room { share::ROOM_USER.to_string() } else { visitor.to_string() },
         notes: template.notes.clone(),
         voice: template.voice.clone(),
         created_at: now.clone(),
@@ -474,7 +485,7 @@ fn guest_chat_from(template: &Chat, export: &ChatExport, share: &Share) -> Chat 
         next_id: export.messages.iter().map(|m| m.id).max().unwrap_or(0) + 1,
         memory: None,
         last_usage: None,
-        guest: Some(GuestChat { share_id: share.id.clone(), authors: Default::default() }),
+        guest: Some(GuestChat { share_id: share.id.clone(), host: template.user.clone(), authors: Default::default() }),
         generated: Default::default(),
     };
     if let Some(m) = &template.memory
@@ -520,24 +531,29 @@ fn guest_view(export: &ChatExport, chat: &Chat, share: &Share, session: &GuestSe
         msgs.iter().copied().filter(|m| m.id > max_export_id || visible.as_ref().is_none_or(|ids| ids.contains(&m.id))).collect();
     let room = share.mode == ShareMode::Room;
     let authors = chat.guest.as_ref().map(|g| &g.authors);
-    let names: std::collections::HashMap<&str, &str> =
-        share.sessions.iter().map(|s| (s.id.as_str(), s.name.as_deref().unwrap_or("Guest"))).collect();
-    view_messages(export, chat, &allowed)
+    let names: std::collections::HashMap<&str, String> = share.sessions.iter().map(|s| (s.id.as_str(), share.visitor_name(s))).collect();
+    // Whose reactions are "mine": in a room each visitor reacts under their own name
+    // (rooms from before 0.5.6 under the chat's user, shared by all).
+    let viewer =
+        if room && chat.guest.as_ref().is_some_and(|g| !g.host.is_empty()) { share.visitor_name(session) } else { chat.user.clone() };
+    view_messages_as(export, chat, &viewer, &allowed)
         .into_iter()
         .map(|mut v| {
             let id = v["id"].as_i64().unwrap_or_default();
-            if v["from"] == json!(chat.persona) {
+            let persona = v["from"] == json!(chat.persona);
+            if persona {
                 v["from"] = json!(share.display_name);
             }
             if let Some(md) = v.get_mut("media").and_then(Value::as_object_mut) {
                 md.remove("description");
             }
-            if room && id > max_export_id && v["mine"] == json!(true) {
+            // Room messages are mine by their author session, whatever the names say.
+            if room && id > max_export_id && !persona {
                 let author = authors.and_then(|a| a.get(&id));
                 let mine = author.is_some_and(|a| *a == session.id);
                 v["mine"] = json!(mine);
-                if !mine {
-                    v["from"] = json!(author.and_then(|a| names.get(a.as_str()).copied()).unwrap_or("Guest"));
+                if !mine && let Some(n) = author.and_then(|a| names.get(a.as_str())) {
+                    v["from"] = json!(n);
                 }
             }
             v
@@ -575,7 +591,9 @@ async fn guest_chat(
         .collect();
     let avatar = persona_avatar(&rec.export, &chat.persona);
     let mut participants = vec![json!({"name": share.display_name, "avatar": avatar})];
-    let multi = share.mode == ShareMode::Room || rec.export.participants.len() > 2;
+    // Names on the bubbles wherever more than the visitor and the persona appear: a room,
+    // a group export, or visible history (the host's messages are not the visitor's).
+    let multi = share.mode == ShareMode::Room || rec.export.participants.len() > 2 || share.history != HistoryVisibility::None;
     if share.history != HistoryVisibility::None {
         participants
             .extend(rec.export.participants.iter().filter(|p| p.name != chat.persona).map(|p| json!({"name": p.name, "avatar": p.avatar})));
@@ -641,7 +659,8 @@ async fn guest_message(
 ) -> ApiResult {
     let (share, session) = resolve(&st, &slug, &token, &ip).await?;
     rate(&st, format!("msg:{}", session.id), 30, Duration::from_secs(60))?;
-    let author = (share.mode == ShareMode::Room).then_some(session.id.as_str());
+    let name = share.visitor_name(&session);
+    let author = (share.mode == ShareMode::Room).then_some((session.id.as_str(), name.as_str()));
     let id = crate::server::add_message(&st, &session.chat_id, req, GUEST_MAX_CHARS, author).await?;
     touch(&st, &share.id, &session.id, false).await?;
     crate::tgbot::relay_guest_message(&st, &share, &session, id).await;
@@ -660,7 +679,8 @@ async fn guest_voice(
     let (share, session) = resolve(&st, &slug, &token, &ip).await?;
     // Each voice message costs a transcription call.
     rate(&st, format!("voice:{}", session.id), 10, Duration::from_secs(60))?;
-    let author = (share.mode == ShareMode::Room).then_some(session.id.as_str());
+    let name = share.visitor_name(&session);
+    let author = (share.mode == ShareMode::Room).then_some((session.id.as_str(), name.as_str()));
     let id = crate::server::add_voice(&st, &session.chat_id, mp, 5 * 1024 * 1024, author).await?;
     touch(&st, &share.id, &session.id, false).await?;
     crate::tgbot::relay_guest_message(&st, &share, &session, id).await;
@@ -683,7 +703,8 @@ async fn guest_react(
     if !guest_visible(&rec.export, &chat, &share).iter().any(|m| m.id == req.message_id) {
         return Err(bad("message not found"));
     }
-    crate::server::add_reaction(&st, &session.chat_id, req).await?;
+    let from = (share.mode == ShareMode::Room).then(|| share.visitor_name(&session));
+    crate::server::add_reaction(&st, &session.chat_id, req, from.as_deref()).await?;
     Ok(Json(json!({"ok": true})))
 }
 
