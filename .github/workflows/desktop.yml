@@ -148,8 +148,19 @@ jobs:
           find desktop/target -path '*/release/bundle/*' -type f \
             \( -name '*.dmg' -o -name '*.msi' -o -name '*-setup.exe' -o -name '*.deb' -o -name '*.rpm' -o -name '*.AppImage' \) \
             -exec cp -v {} dist-out/ \;
-          ls -la dist-out
           test -n "$(ls -A dist-out)"
+          # Tag builds also attach each installer without the version in its name, so
+          # https://github.com/<repo>/releases/latest/download/iRoof.top_aarch64.dmg (and so on) always
+          # points at the newest release: iroof.top and the docs link to these.
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            ver="${GITHUB_REF_NAME#v}"
+            for f in dist-out/*; do
+              b=$(basename "$f")
+              stable=$(sed -E "s/[_-]${ver//./\\.}(-[0-9]+)?//" <<<"$b")
+              if [[ "$stable" != "$b" ]]; then cp -v "$f" "dist-out/$stable"; fi
+            done
+          fi
+          ls -la dist-out
 
       - uses: actions/upload-artifact@v7
         with:

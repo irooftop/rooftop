@@ -5,7 +5,8 @@
 | | Command |
 |---|---|
 | **Desktop app**, macOS | `brew install --cask irooftop/tap/irooftop` |
-| **Desktop app**, Windows and Linux | installers on the [Releases](https://github.com/irooftop/rooftop/releases) page |
+| **Desktop app**, Windows | [Installer (.exe)](https://github.com/irooftop/rooftop/releases/latest/download/iRoof.top_x64-setup.exe) or [.msi](https://github.com/irooftop/rooftop/releases/latest/download/iRoof.top_x64_en-US.msi) |
+| **Desktop app**, Linux | [AppImage](https://github.com/irooftop/rooftop/releases/latest/download/iRoof.top_amd64.AppImage), [.deb](https://github.com/irooftop/rooftop/releases/latest/download/iRoof.top_amd64.deb) or [.rpm](https://github.com/irooftop/rooftop/releases/latest/download/iRoof.top.x86_64.rpm) |
 | **Server**, macOS and Linux | `brew install irooftop/tap/rooftop` (then `brew services start rooftop`) |
 | **Server**, anywhere with Rust ≥ 1.88 | `cargo install rooftop` |
 | **Server**, container | `docker pull ghcr.io/irooftop/rooftop` ([Docker](./docker)) |

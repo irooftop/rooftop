@@ -33,7 +33,8 @@ internet relay and no Telegram bot. Nothing leaves your computer. Details: [Offl
 | | |
 |---|---|
 | 🖥️ **Desktop app**, macOS | `brew install --cask irooftop/tap/irooftop` |
-| 🖥️ **Desktop app**, Windows / Linux | [Releases](https://github.com/irooftop/rooftop/releases) |
+| 🖥️ **Desktop app**, Windows | [Installer (.exe)](https://github.com/irooftop/rooftop/releases/latest/download/iRoof.top_x64-setup.exe) · [.msi](https://github.com/irooftop/rooftop/releases/latest/download/iRoof.top_x64_en-US.msi) |
+| 🖥️ **Desktop app**, Linux | [AppImage](https://github.com/irooftop/rooftop/releases/latest/download/iRoof.top_amd64.AppImage) · [.deb](https://github.com/irooftop/rooftop/releases/latest/download/iRoof.top_amd64.deb) · [.rpm](https://github.com/irooftop/rooftop/releases/latest/download/iRoof.top.x86_64.rpm) |
 | ⚙️ **Server**, macOS / Linux | `brew install irooftop/tap/rooftop` |
 | 🦀 **Server**, with Rust ≥ 1.88 | `cargo install rooftop` |
 | 🐳 **Server**, Docker | `docker run -p 8080:8080 -v rooftop-data:/data ghcr.io/irooftop/rooftop` |

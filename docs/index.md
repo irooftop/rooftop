@@ -80,7 +80,7 @@ features:
 
 ```sh [Desktop app]
 brew install --cask irooftop/tap/irooftop   # macOS
-# Windows and Linux: installers on the Releases page
+# Windows and Linux: direct downloads under "Download the app" above
 # Open the app, then Settings → model and key → Test
 ```
 

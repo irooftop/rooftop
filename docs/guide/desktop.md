@@ -5,9 +5,11 @@ The desktop app ([Tauri](https://v3.tauri.app) `3.0.0-alpha.5`) runs the same se
 
 | Platform | Install |
 |---|---|
-| macOS (Apple Silicon, Intel) | `brew install --cask irooftop/tap/irooftop`, or the `.dmg` from [Releases](https://github.com/irooftop/rooftop/releases) |
-| Windows | `-setup.exe` or `.msi` from Releases |
-| Linux | `.deb`, `.rpm` or `.AppImage` from Releases |
+| macOS | `brew install --cask irooftop/tap/irooftop`, or the `.dmg` for [Apple Silicon](https://github.com/irooftop/rooftop/releases/latest/download/iRoof.top_aarch64.dmg) or [Intel](https://github.com/irooftop/rooftop/releases/latest/download/iRoof.top_x64.dmg) |
+| Windows 10 and 11 | [Installer (.exe)](https://github.com/irooftop/rooftop/releases/latest/download/iRoof.top_x64-setup.exe) or [.msi](https://github.com/irooftop/rooftop/releases/latest/download/iRoof.top_x64_en-US.msi) |
+| Linux (x86-64) | [AppImage](https://github.com/irooftop/rooftop/releases/latest/download/iRoof.top_amd64.AppImage) (any distribution), [.deb](https://github.com/irooftop/rooftop/releases/latest/download/iRoof.top_amd64.deb) (Debian, Ubuntu) or [.rpm](https://github.com/irooftop/rooftop/releases/latest/download/iRoof.top.x86_64.rpm) (Fedora) |
+
+The download links always point to the newest release.
 
 ::: warning The builds are not signed yet
 On macOS, right-click the app and choose **Open**. On Windows, choose **Run anyway** in SmartScreen.
