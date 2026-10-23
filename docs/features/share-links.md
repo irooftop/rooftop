@@ -19,6 +19,8 @@ descriptions, prompt, token usage or other chats.
 | Conversations | private | **Private**: one conversation per visitor. **Shared room**: everyone in one conversation |
 | Visitors can read the export | nothing | nothing, the last *N* messages, or everything |
 | Limits | 50 visitors, 200 answers each | every answer costs tokens on your key. `0` = unlimited |
+| Visitors can let them write first | off | shows the 💬 button: the persona sends a message without one from the visitor |
+| Visitors can rewrite an answer | off | shows the ↻ button: the persona's last answer is written again. Both use an answer of the limit, and the server refuses them while they are off |
 | Expires / active | never / on | pause or expire a link without deleting it |
 | Telegram group | off | [answer from Telegram](./telegram) |
 

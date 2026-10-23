@@ -101,6 +101,12 @@ pub struct Share {
     /// With a Telegram group: seconds before the AI answers on its own, 0 = only on request.
     #[serde(default = "default_ai_delay")]
     pub ai_delay_secs: u32,
+    /// Visitors may ask the persona to write first, without a message of their own.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub allow_nudge: bool,
+    /// Visitors may have the persona's last answer written again.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub allow_regenerate: bool,
     /// The shared conversation in room mode.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub room_chat_id: Option<String>,

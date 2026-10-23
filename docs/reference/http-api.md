@@ -61,7 +61,7 @@ No password, for share-link visitors:
 | GET | `/api/s/{name}` | start page info |
 | POST | `/api/s/{name}/sessions` | `{pin?, name?}` → `{token}` |
 | GET | `/api/s/{name}/c/{token}` | timeline |
-| POST | `/api/s/{name}/c/{token}/messages` · `react` · `voice` · `respond` · `regenerate` | as for the owner |
+| POST | `/api/s/{name}/c/{token}/messages` · `react` · `voice` · `respond` · `regenerate` | as for the owner; `regenerate`, and `respond` without a new visitor message ("write first"), only where the link has `allow_regenerate` / `allow_nudge` (else `403`) |
 | GET | `/api/s/{name}/c/{token}/media/{path}` | media the visitor may see |
 
 ## Relay hub

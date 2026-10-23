@@ -284,3 +284,44 @@ async fn favicons_are_public() {
     let (_, _, html) = call(&env.app, "GET", "/", None, Some("pw")).await;
     assert!(html.contains(r#"href="/favicon.svg""#) && html.contains(r#"href="/favicon.ico""#));
 }
+
+/// "Let them write first" and "Rewrite the last answer" are off unless the owner allows them:
+/// the buttons are hidden and the server refuses them, while answering a message still works.
+#[tokio::test]
+async fn nudge_and_regenerate_are_opt_in() {
+    let Some(env) = setup(None).await else { return };
+    let share = create_share(&env, json!({"slug": "opt", "display_name": "Jonas"})).await;
+    assert_eq!(share["allow_nudge"], false);
+    assert_eq!(share["allow_regenerate"], false);
+    let (_, s) = start(&env, "opt", json!({})).await;
+    let t = s["token"].as_str().unwrap().to_string();
+    let (_, chat, _) = call(&env.app, "GET", &format!("/api/s/opt/c/{t}"), None, None).await;
+    assert_eq!(chat["share"]["nudge"], false);
+    assert_eq!(chat["share"]["regenerate"], false);
+    let turn = |path: &'static str| {
+        let (app, t) = (env.app.clone(), t.clone());
+        async move { call(&app, "POST", &format!("/api/s/opt/c/{t}/{path}"), None, None).await.0 }
+    };
+    assert_eq!(turn("respond").await, StatusCode::FORBIDDEN, "no visitor message yet: that's a nudge");
+    assert_eq!(turn("regenerate").await, StatusCode::FORBIDDEN);
+    let (st, _, text) = call(&env.app, "POST", &format!("/api/s/opt/c/{t}/messages"), Some(json!({"text": "hi"})), None).await;
+    assert_eq!(st, StatusCode::OK, "{text}");
+    assert_ne!(turn("respond").await, StatusCode::FORBIDDEN, "answering a message is always allowed");
+
+    let (st, v, text) = call(
+        &env.app,
+        "PATCH",
+        &format!("/api/shares/{}", share["id"].as_str().unwrap()),
+        Some(json!({"allow_nudge": true, "allow_regenerate": true})),
+        None,
+    )
+    .await;
+    assert_eq!(st, StatusCode::OK, "{text}");
+    assert_eq!(v["allow_nudge"], true, "{v}");
+    let (_, s2) = start(&env, "opt", json!({})).await;
+    let t2 = s2["token"].as_str().unwrap();
+    let (_, chat, _) = call(&env.app, "GET", &format!("/api/s/opt/c/{t2}"), None, None).await;
+    assert_eq!((chat["share"]["nudge"].clone(), chat["share"]["regenerate"].clone()), (json!(true), json!(true)));
+    let (st, _, _) = call(&env.app, "POST", &format!("/api/s/opt/c/{t2}/respond"), None, None).await;
+    assert_ne!(st, StatusCode::FORBIDDEN);
+}

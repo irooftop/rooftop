@@ -293,7 +293,9 @@ audio { width: 260px; max-width: 100%; height: 40px; display: block; margin: 2px
 .tools .i { width: 17px; height: 17px; }
 .tools button:hover { background: var(--hover); color: var(--text); }
 
-.typing-row .bubble { padding: 10px 14px; }
+.typing-row .bubble { padding: 10px 14px; transition: opacity .25s, transform .25s; transform-origin: bottom left; }
+.typing-row.paused .bubble { opacity: 0; transform: scale(.92); }
+.typing-row.paused .avatar { opacity: 0; transition: opacity .25s; }
 .dots { display: inline-flex; gap: 4px; }
 .dots i { width: 7px; height: 7px; border-radius: 50%; background: var(--muted); opacity: .4; animation: blink 1.2s infinite; }
 .dots i:nth-child(2) { animation-delay: .2s; }
@@ -442,15 +444,17 @@ dialog.nudge > * { animation: dlg-nudge .32s ease; }
 .md-filters button[aria-selected="true"] { background: var(--accent); border-color: var(--accent); color: #fff; }
 .md-filters button[aria-selected="true"] span { color: rgba(255,255,255,.85); }
 .md-bar select { flex: none; width: auto; max-width: 190px; }
-.md-progress { display: flex; align-items: center; gap: 10px; min-height: 30px; }
-.md-summary { min-width: 0; flex: 1; font-variant-numeric: tabular-nums; }
-.md-progress.running .md-meter { width: 200px; }
-.md-meter.running > div { background: linear-gradient(90deg, var(--accent), color-mix(in srgb, var(--accent) 60%, #fff), var(--accent)) 0 0 / 200% 100%; animation: md-run 1.6s linear infinite; }
-@keyframes md-run { to { background-position: -200% 0; } }
-@media (prefers-reduced-motion: reduce) { .md-meter.running > div { animation: none; } }
-.md-meter { width: 140px; flex: none; height: 6px; border-radius: 3px; background: var(--bg-2); box-shadow: inset 0 0 0 1px var(--border); overflow: hidden; }
-.md-meter > div { height: 100%; background: var(--accent); border-radius: 3px; transition: width .3s; }
-.md-meter.done > div { background: #2fa84f; }
+/* Media library: progress as a pill in the dialog header (ring + a few words). */
+.md-progress { display: inline-flex; align-items: center; gap: 7px; height: 30px; padding: 0 11px 0 7px; margin-right: 4px; border-radius: 15px;
+  background: var(--bg-2); color: var(--muted); font-size: 13px; font-variant-numeric: tabular-nums; white-space: nowrap; flex: none; cursor: default; }
+.md-summary .bad { color: var(--danger, #e5484d); }
+.md-ring { width: 18px; height: 18px; flex: none; transform: rotate(-90deg); fill: none; stroke-width: 2.6; }
+.md-ring circle { stroke: color-mix(in srgb, currentColor 22%, transparent); }
+.md-ring .v { stroke: var(--accent); stroke-linecap: round; stroke-dasharray: var(--p, 0) 100; transition: stroke-dasharray .4s; }
+.md-ring.done .v { stroke: #2fa84f; }
+.md-ring.running { animation: md-spin 1.4s linear infinite; }
+@keyframes md-spin { to { transform: rotate(270deg); } }
+.md-progress.running { color: var(--text); }
 .md-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 10px; max-height: min(60vh, 640px); overflow: auto; overscroll-behavior: contain; padding: 2px; margin: 0 -2px; align-content: start; }
 /* Card: thumbnail column (with the id under it) and a body whose header carries the status and the AI action. */
 .md-card { display: flex; gap: 12px; padding: 10px; border: 1px solid var(--border); border-radius: 14px; background: var(--bg); position: relative; min-width: 0; transition: border-color .15s, box-shadow .15s; }
@@ -526,6 +530,12 @@ body.lb-open { overflow: hidden; }
 .note.warn { background: color-mix(in srgb, #f5a623 16%, var(--panel)); }
 .note .i { color: #d48806; margin-top: 1px; }
 .share-list { display: grid; gap: 10px; max-height: min(60vh, 620px); overflow: auto; padding: 1px; }
+/* No links yet: an open invitation in the dialog, not a card inside the card. */
+.share-empty { display: grid; justify-items: center; gap: 6px; text-align: center; padding: 26px 16px 18px; color: var(--muted); font-size: 14px; line-height: 1.45; }
+.share-empty > span:last-child { max-width: 46ch; text-wrap: balance; }
+.share-empty b { color: var(--text); font-size: 16px; margin-top: 6px; }
+.se-badge { width: 64px; height: 64px; border-radius: 50%; display: grid; place-items: center; color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, transparent); }
+.se-badge .i { width: 30px; height: 30px; stroke-width: 1.6; }
 .share-card { border: 1px solid var(--border); border-radius: 14px; padding: 12px; display: grid; gap: 8px; background: var(--bg); min-width: 0; }
 .share-card.inactive { opacity: .7; }
 .share-top { display: flex; gap: 10px; align-items: center; min-width: 0; }
@@ -760,6 +770,36 @@ a.btn { text-decoration: none; color: inherit; }
 .gate-note { margin: 4px 0 0; }
 .empty-chat .avatar { width: 72px; height: 72px; font-size: 26px; }
 .guest .welcome { place-items: center; }
+/* Share links load without the owner's layout flashing first: the server sends the page
+   with `guest booting boot-gate|boot-chat`, and a skeleton holds the place until app.js
+   shows the real start page or conversation (bootDone()). */
+.boot, .boot-view { display: none; }
+.guest #welcome { display: none !important; }
+.booting .boot { display: contents; }
+.booting.boot-gate .boot-gate-view { display: grid; }
+.booting.boot-chat .boot-chat-view { display: flex; }
+.booting #guestGate, .booting #chatView { display: none !important; }
+.guest #guestGate:not(.hidden), .guest #chatView:not(.hidden) { animation: boot-in .28s ease both; }
+@keyframes boot-in { from { opacity: 0; } }
+.sk { display: block; position: relative; overflow: hidden; background: color-mix(in srgb, var(--text) 9%, transparent); border-radius: 8px; }
+.sk::after { content: ""; position: absolute; inset: 0; transform: translateX(-100%);
+  background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--text) 7%, transparent), transparent); animation: sk-sweep 1.3s ease-in-out infinite; }
+@keyframes sk-sweep { to { transform: translateX(100%); } }
+.sk-avatar { width: 42px; height: 42px; border-radius: 50%; flex: none; }
+.sk-avatar.xl { width: 96px; height: 96px; margin: 0 auto 6px; }
+.sk-line { height: 14px; border-radius: 7px; }
+.sk-line.thin { height: 10px; opacity: .7; }
+.boot-gate-view .gate { display: grid; gap: 14px; justify-items: center; }
+.boot-gate-view .sk-line { margin: 0 auto; }
+.sk-field { width: 100%; height: 44px; border-radius: 12px; }
+.sk-btn { width: 100%; height: 44px; border-radius: 12px; background: color-mix(in srgb, var(--accent) 35%, transparent); }
+.sk-lines { display: grid; gap: 7px; }
+.sk-msgs { flex: 1; display: flex; flex-direction: column; justify-content: flex-end; gap: 6px; padding: 16px max(12px, calc((100% - 760px) / 2)); overflow: hidden; }
+.sk-bubble { height: 34px; border-radius: var(--radius); background: var(--in); box-shadow: var(--shadow); max-width: 78%; }
+.sk-bubble.mine { align-self: flex-end; background: var(--out); margin-top: 6px; }
+.sk-bubble + .sk-bubble:not(.mine) { margin-top: 0; }
+.sk-input { flex: 1; height: 44px; border-radius: 22px; }
+@media (prefers-reduced-motion: reduce) { .sk::after { animation: none; } .guest #guestGate, .guest #chatView { animation: none; } }
 
 /* Voice messages */
 .rec-bar { display: flex; align-items: center; gap: 10px; min-height: 44px; }
@@ -888,9 +928,7 @@ a.btn { text-decoration: none; color: inherit; }
   .md-bar { flex-wrap: wrap; }
   .md-search { flex-basis: 100%; }
   .md-bar select { flex: 1; max-width: none; }
-  .md-progress { flex-wrap: wrap; }
-  .md-progress .md-meter, .md-progress.running .md-meter { width: auto; flex-basis: 100%; }
-  .md-meter { flex: 1; }
+  .md-progress .w { display: none; }
   .md-ai { width: 36px; height: 36px; }
   .md-meta { height: 36px; }
   .md-bar .btn.primary { width: 100%; height: 44px; }

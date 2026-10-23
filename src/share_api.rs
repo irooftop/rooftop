@@ -37,8 +37,8 @@ fn too_many(wait: Duration) -> ApiError {
 
 pub fn guest_routes() -> Router<Arc<AppState>> {
     Router::new()
-        .route("/s/{slug}", get(crate::server::index))
-        .route("/s/{slug}/{token}", get(crate::server::index))
+        .route("/s/{slug}", get(crate::server::guest_gate_index))
+        .route("/s/{slug}/{token}", get(crate::server::guest_chat_index))
         .route("/api/s/{slug}", get(guest_info))
         .route("/api/s/{slug}/avatar", get(guest_avatar))
         .route("/api/s/{slug}/sessions", post(guest_start))
@@ -71,6 +71,8 @@ pub fn share_summary(s: &Share) -> Value {
         "max_replies": s.max_replies,
         "telegram_chat_id": s.telegram_chat_id,
         "ai_delay_secs": s.ai_delay_secs,
+        "allow_nudge": s.allow_nudge,
+        "allow_regenerate": s.allow_regenerate,
         "created_at": s.created_at,
         "sessions": s.sessions.iter().map(|g| json!({
             "id": g.id, "name": g.name, "chat_id": g.chat_id,
@@ -120,6 +122,8 @@ pub struct ShareInput {
     #[serde(default, deserialize_with = "double_option")]
     telegram_chat_id: Option<Option<i64>>,
     ai_delay_secs: Option<u32>,
+    allow_nudge: Option<bool>,
+    allow_regenerate: Option<bool>,
     /// Ends all visitor conversations (deletes them).
     #[serde(default)]
     revoke_sessions: bool,
@@ -215,6 +219,12 @@ async fn apply_input(st: &AppState, share: &mut Share, input: ShareInput, db: &D
     if let Some(n) = input.ai_delay_secs {
         share.ai_delay_secs = n.min(3600);
     }
+    if let Some(b) = input.allow_nudge {
+        share.allow_nudge = b;
+    }
+    if let Some(b) = input.allow_regenerate {
+        share.allow_regenerate = b;
+    }
     Ok(input.revoke_sessions)
 }
 
@@ -243,6 +253,8 @@ pub async fn create_share(State(st): S, Path(chat_id): Path<String>, Json(input)
         ai_delay_secs: crate::tgbot::DEFAULT_AI_DELAY_SECS,
         created_at: now_string(),
         sessions: Vec::new(),
+        allow_nudge: false,
+        allow_regenerate: false,
         room_chat_id: None,
     };
     apply_input(&st, &mut share, input, &db).await?;
@@ -584,6 +596,9 @@ async fn guest_chat(
             // Answers come from the owner's Telegram group (or the AI after a countdown):
             // the client waits for them instead of asking the persona to respond.
             "relay": crate::tgbot::relay_active(&st, &share),
+            // What the owner allows besides answering: "Let them write first", "Rewrite".
+            "nudge": share.allow_nudge,
+            "regenerate": share.allow_regenerate,
         },
         "typing": crate::tgbot::is_typing(&st, &session.chat_id),
     })))
@@ -679,6 +694,24 @@ async fn guest_turn(st: Arc<AppState>, slug: String, token: String, ip: String, 
     }
     if share.max_replies > 0 && replies_used(&share, &session) >= share.max_replies {
         return Err(ApiError(StatusCode::FORBIDDEN, format!("{} has to go now. This conversation reached its limit.", share.display_name)));
+    }
+    if regenerate && !share.allow_regenerate {
+        return Err(ApiError(StatusCode::FORBIDDEN, "Answers can't be rewritten on this link.".into()));
+    }
+    // An answer needs something to answer: a visitor's message after the persona's last one.
+    // Without one this is "write first", which the owner may not allow.
+    if !regenerate && !share.allow_nudge {
+        let (_, chat) = st.snapshot(&session.chat_id).await.map_err(|_| not_found(GONE))?;
+        let last = chat.events.iter().rev().find_map(|e| match e {
+            Event::Message(m) if !m.service => Some(m.from == chat.persona),
+            _ => None,
+        });
+        if last.unwrap_or(true) {
+            return Err(ApiError(
+                StatusCode::FORBIDDEN,
+                format!("{} answers your messages here: write something first.", share.display_name),
+            ));
+        }
     }
     rate(&st, format!("turn:{}", session.id), 10, Duration::from_secs(60))?;
     rate(&st, format!("turn-link:{}", share.id), 120, Duration::from_secs(60))?;

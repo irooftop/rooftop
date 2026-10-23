@@ -697,7 +697,7 @@ function messageItems() {
   const msgs = S.chat.messages, items = [];
   if (S.chat.has_more) items.push(["more", `<div class="load-more" id="loadMore">${S.loadingOlder ? `<span class="spin" aria-hidden="true"></span><span>Loading earlier messages…</span>` : `<button class="btn sm" data-load-more>Show earlier messages</button>`}</div>`]);
   if (!msgs.length) items.push(["empty", GUEST
-    ? `<div class="empty-chat">${avatarHtml(S.chat.chat.persona, S.chat.chat.persona_avatar, "")}<b>${esc(S.chat.chat.persona)}</b>${S.chat.share?.greeting ? `<span>${esc(S.chat.share.greeting)}</span>` : ""}<span>Say hello, or tap the speech bubble above to let ${esc(S.chat.chat.persona)} write first.</span></div>`
+    ? `<div class="empty-chat">${avatarHtml(S.chat.chat.persona, S.chat.chat.persona_avatar, "")}<b>${esc(S.chat.chat.persona)}</b>${S.chat.share?.greeting ? `<span>${esc(S.chat.share.greeting)}</span>` : ""}<span>${canNudge() ? `Say hello, or tap the speech bubble above to let ${esc(S.chat.chat.persona)} write first.` : `Say hello: ${esc(S.chat.chat.persona)} will answer.`}</span></div>`
     : `<div class="empty-chat">${icon("chat")}<b>No messages yet</b><span>Say hello, or use the speech bubble above to let ${esc(S.chat.chat.persona)} start.</span></div>`]);
   let lastDay = null;
   msgs.forEach((m, i) => {
@@ -710,7 +710,8 @@ function messageItems() {
 function renderMessages({ keepScroll = false } = {}) {
   const box = $("#messages");
   const atBottom = S.pinned;
-  $("#typingRow")?.remove();
+  // The typing bubble stays the last row through a re-render (it has its own timers).
+  const typing = $("#typingRow"); typing?.remove();
   const next = messageItems(), prev = S.rendered;
   const same = (a, b) => a[0] === b[0] && a[1] === b[1];
   if (S.renderedFor !== S.chatId || box.children.length !== prev.length) {
@@ -727,6 +728,7 @@ function renderMessages({ keepScroll = false } = {}) {
     }
   }
   S.rendered = next; S.renderedFor = S.chatId;
+  if (typing && TYPING.on) box.appendChild(typing);
   if (!keepScroll || atBottom) { box.scrollTop = box.scrollHeight; S.pinned = true; }
 }
 // Older history comes in pages, and the viewport stays where it was.
@@ -769,17 +771,30 @@ function upsertMessages(list) {
     S.byId.set(v.id, v);
   }
 }
-function setTyping(on) {
-  const sub = $("#chatSub");
+// "typing…" the way people type: a few seconds of typing, a short pause, typing again, for
+// as long as the persona is writing. A pause only fades the bubble (its row keeps its
+// place, so the chat doesn't jump) and the header goes back to its usual line.
+// `pause`: start with one, e.g. right after a bubble arrived.
+const TYPING = { on: false, timer: null };
+const between = (a, b) => a + Math.random() * (b - a);
+function setTyping(on, { pause = 0 } = {}) {
+  clearTimeout(TYPING.timer);
+  TYPING.on = on;
+  $("#typingRow")?.remove();
+  if (!on) return typingVisible(false);
+  const box = $("#messages");
+  const p = S.chat.export.participants.find(p => p.name === S.chat.chat.persona);
+  box.insertAdjacentHTML("beforeend", `<div class="row typing-row group-start group-end" id="typingRow">${profileAvatar(S.chat.chat.persona, p?.avatar)}<div class="bubble" role="status" aria-label="${esc(S.chat.chat.persona)} is typing"><span class="dots"><i></i><i></i><i></i></span></div></div>`);
+  box.scrollTop = box.scrollHeight;
+  const burst = () => { typingVisible(true); TYPING.timer = setTimeout(rest, between(1800, 4500)); };
+  const rest = (ms = between(500, 1500)) => { typingVisible(false); TYPING.timer = setTimeout(burst, ms); };
+  if (pause > 0) rest(pause); else burst();
+}
+function typingVisible(on) {
+  const sub = $("#chatSub"), row = $("#typingRow");
+  row?.classList.toggle("paused", !on);
   if (on) { sub.textContent = "typing…"; sub.classList.add("typing"); }
   else { sub.classList.remove("typing"); sub.textContent = subtitle(); }
-  $("#typingRow")?.remove();
-  if (on) {
-    const box = $("#messages");
-    const p = S.chat.export.participants.find(p => p.name === S.chat.chat.persona);
-    box.insertAdjacentHTML("beforeend", `<div class="row typing-row group-start group-end" id="typingRow">${profileAvatar(S.chat.chat.persona, p?.avatar)}<div class="bubble" role="status" aria-label="${esc(S.chat.chat.persona)} is typing"><span class="dots"><i></i><i></i><i></i></span></div></div>`);
-    box.scrollTop = box.scrollHeight;
-  }
 }
 function subtitle() {
   const c = S.chat.chat;
@@ -809,12 +824,17 @@ async function openChat(id, { keepScroll = false } = {}) {
     $("#chatAvatar").outerHTML = avatarHtml(data.chat.persona, p?.avatar || data.chat.persona_avatar, "", undefined, "span").replace('class="avatar ', 'id="chatAvatar" class="avatar ');
     $("#peerBtn").setAttribute("aria-label", `${data.chat.title}: profile`);
     $("#shareBtn").classList.toggle("hidden", !!(GUEST || data.chat.guest));
-    for (const b of ["#nudgeBtn", "#regenBtn"]) $(b).classList.toggle("hidden", !!(GUEST && data.share?.relay));
+    // Visitors get "write first" and "rewrite" only where the link allows them; with neither,
+    // the header keeps just the persona (the owner's other actions are hidden for visitors).
+    $("#nudgeBtn").classList.toggle("hidden", !canNudge());
+    $("#regenBtn").classList.toggle("hidden", !canRegenerate());
+    $("#chatView .head-actions").classList.toggle("hidden", !!GUEST && !canNudge() && !canRegenerate());
     if (GUEST) document.title = `${data.chat.title} · iRoof.top`;
     $("#chatName").textContent = data.chat.title;
     $("#chatSub").textContent = subtitle();
     renderMessages({ keepScroll });
     renderSidebar();
+    bootDone();
     if (matchMedia("(pointer: fine)").matches) $("#input").focus();
     return true;
   } catch (e) {
@@ -969,7 +989,8 @@ async function respond(path = "respond") {
         const len = (v.text || "").length;
         await sleep(v.media ? 700 : Math.min(2600, 450 + len * 38));
         if (S.chatId !== chatId) return;
-        setTyping(false); upsertMessages([v]); renderMessages(); setTyping(true);
+        // A bubble arrives, then a breath before they type the next one.
+        setTyping(false); upsertMessages([v]); renderMessages(); setTyping(true, { pause: between(350, 900) });
       } else {
         await sleep(450);
         const v = views.get(a.target); if (v) { upsertMessages([v]); renderMessages({ keepScroll: true }); setTyping(true); $(`#m-${a.target} .reaction:not(.mine)`)?.classList.add("pop"); }
@@ -977,13 +998,14 @@ async function respond(path = "respond") {
     }
     if (GUEST && S.chat.share && S.chat.share.replies_left != null) { S.chat.share.replies_left = Math.max(0, S.chat.share.replies_left - 1); }
     if (r.error) errorToast(r.error, () => respond());
-    else if (!r.actions.length) toast(`${S.chat.chat.persona} didn't answer this time.`, { action: () => respond(), actionLabel: "Nudge" });
+    else if (!r.actions.length) toast(`${S.chat.chat.persona} didn't answer this time.`, canNudge() ? { action: () => respond(), actionLabel: "Nudge" } : {});
   } catch (e) {
     errorToast(e.message, () => respond(path));
   } finally {
     S.busy = false;
     if (S.chatId === chatId) { setTyping(false); loadState().catch(() => { }); }
-    if (S.pending) { S.pending = false; respond(); }
+    // More messages came in meanwhile; for visitors only if something is still unanswered.
+    if (S.pending) { S.pending = false; if (canNudge() || awaitingAnswer()) respond(); }
   }
 }
 // Mobile overflow menu for the secondary chat actions (on desktop the menu is inline).
@@ -998,6 +1020,11 @@ moreBtn.onclick = (e) => {
 moreMenu.addEventListener("click", closeMore);
 document.addEventListener("click", (e) => { if (!e.target.closest("#moreMenu")) closeMore(); });
 document.addEventListener("keydown", (e) => { if (e.key === "Escape" && moreMenu.classList.contains("open")) { closeMore(); moreBtn.focus(); } });
+// What a visitor may do besides sending messages (the owner may do everything).
+const canNudge = () => !GUEST || !!(S.chat?.share?.nudge && !S.chat.share.relay);
+const canRegenerate = () => !GUEST || !!(S.chat?.share?.regenerate && !S.chat.share.relay);
+// Whether the persona has something to answer: a message after their last one.
+const awaitingAnswer = () => { const last = [...(S.chat?.messages || [])].reverse().find(m => !m.service); return !!last && !last.persona; };
 // Actions that call the model get a short confirmation that says exactly what will happen.
 const personaName = () => S.chat?.chat.persona || "They";
 function answersLeftNote() {
@@ -1565,19 +1592,30 @@ function renderMediaHeader() {
   const run = MD.run, meter = $("#mdMeter");
   // While describing, the bar follows the run; otherwise the whole library.
   const [now, max] = run ? [run.done, run.total] : [described, total];
-  meter.firstElementChild.style.width = `${max ? (now / max) * 100 : 0}%`;
+  meter.style.setProperty("--p", String(max ? (now / max) * 100 : 0));
   meter.setAttribute("aria-label", run ? "Describing" : "Described");
   meter.setAttribute("aria-valuemax", String(max)); meter.setAttribute("aria-valuenow", String(now));
   meter.classList.toggle("done", !run && total > 0 && described === total);
   meter.classList.toggle("running", !!run);
   $("#mdProgress").classList.toggle("running", !!run);
   const todo = mdTodo().length;
-  if (run) $("#mdSummary").textContent = mdRunText(run);
-  else {
+  // In the header: a ring and a few words ("12/13 described", "Describing 40/120 · 2 min");
+  // the full sentence is the tooltip and what screen readers hear.
+  let short, full;
+  if (run) {
+    const failed = run.failed.length;
+    short = `<span class="w">${run.stop ? "Stopping" : "Describing"} </span>${fmtNum(Math.min(run.done + run.active, run.total))}/${fmtNum(run.total)}${mdEta(run) ? `<span class="w"> · ${mdEta(run)}</span>` : ""}${failed ? ` <span class="bad">· ${fmtNum(failed)} failed</span>` : ""}`;
+    full = mdRunText(run);
+  } else {
     const last = MD.lastRun;
-    $("#mdSummary").textContent = `${fmtNum(described)} of ${fmtNum(total)} described` + (manualOnly ? ` · ${fmtNum(manualOnly)} to type by hand` : "")
+    const failed = last?.failed || 0;
+    short = `${fmtNum(described)}/${fmtNum(total)}<span class="w"> described</span>${failed ? ` <span class="bad">· ${fmtNum(failed)} failed</span>` : ""}`;
+    full = `${fmtNum(described)} of ${fmtNum(total)} described` + (manualOnly ? ` · ${fmtNum(manualOnly)} to type by hand` : "")
       + (last ? ` · last run: ${fmtNum(last.ok)} described${last.failed ? `, ${fmtNum(last.failed)} failed` : ""}${last.left ? `, stopped with ${fmtNum(last.left)} left` : ""}` : "");
   }
+  $("#mdSummary").innerHTML = short;
+  $("#mdProgress").title = full;
+  $("#mdSummary").setAttribute("aria-label", full);
   const btn = $("#mdDescribe");
   btn.disabled = run ? run.stop : !todo;
   btn.classList.toggle("primary", !run);
@@ -1585,6 +1623,11 @@ function renderMediaHeader() {
   btn.querySelector("span").textContent = run ? (run.stop ? "Stopping…" : `Stop · ${fmtNum(run.done)}/${fmtNum(run.total)}`) : todo ? `Describe ${fmtNum(todo)} with AI` : "Nothing to describe here";
 }
 const fmtDur = s => s >= 5400 ? `${Math.round(s / 3600)} h` : s >= 90 ? `${Math.round(s / 60)} min` : `${Math.max(1, Math.round(s))} s`;
+// "6 min left" once the rate is known.
+function mdEta(run) {
+  const secs = (performance.now() - run.started) / 1000, rate = run.done / secs;
+  return run.stop || run.done < 3 || !(rate > 0) ? "" : `${fmtDur((run.total - run.done) / rate)} left`;
+}
 // "Describing 120 of 1,234 · 2 failed · 3.1/s · about 6 min left"
 function mdRunText(run) {
   if (run.stop) return `Stopping: finishing ${run.active} in progress…`;
@@ -1951,9 +1994,12 @@ async function showGate(error) {
   stopRoomPoll();
   $("#chatView").classList.add("hidden"); $("#welcome").classList.add("hidden"); $("#app").classList.remove("in-chat");
   history.replaceState(null, "", `/s/${enc(GUEST.slug)}`);
+  // Still loading (a saved conversation that's gone): the skeleton turns into the start page's.
+  if (document.documentElement.classList.contains("booting")) document.documentElement.classList.replace("boot-chat", "boot-gate");
   try {
     GUEST.info = await api(guestBase());
   } catch (e) {
+    bootDone();
     $("#guestGate").classList.remove("hidden");
     $("#gateAvatar").outerHTML = `<div class="avatar xl gone" id="gateAvatar">${icon("link")}</div>`;
     $("#gateTitle").textContent = "Link not available";
@@ -1978,6 +2024,7 @@ async function showGate(error) {
   $("#gateFields").classList.toggle("hidden", !!info.full && !saved);
   if (info.full) gateError("This link has reached its limit of conversations.");
   else gateError(error);
+  bootDone();
   $("#guestGate").classList.remove("hidden");
   const focus = !saved && matchMedia("(pointer: fine)").matches;
   if (focus) (info.pin ? $("#gatePin") : $("#gateYou")).focus();
@@ -2022,7 +2069,7 @@ async function pollGuest() {
       data.has_more ??= data.total > data.messages.length;
       S.chat = data; S.byId = new Map(data.messages.map(m => [m.id, m]));
       renderMessages({ keepScroll: true });
-      if (typing) setTyping(true);
+      if (typing) setTyping(true, { pause: between(350, 900) });
     } else S.chat.share = data.share;
     if (typing !== relayTyping) { relayTyping = typing; setTyping(typing); }
   } catch { }
@@ -2039,6 +2086,8 @@ function startRoomPoll() {
 // The PIN is read only from the fragment, which browsers never send to the server
 // (no access or proxy logs); the name may also come as ?name=. Both leave the
 // address bar as soon as the gate shows.
+// The skeleton the server sent with the page (see .booting in app.css) gives way to the real view.
+function bootDone() { document.documentElement.classList.remove("booting", "boot-gate", "boot-chat"); }
 function bootGuest() {
   document.documentElement.classList.add("guest");
   $("#app").classList.add("guest-mode");
@@ -2166,13 +2215,14 @@ function renderShares() {
           <button class="btn sm" data-qr="${esc(sh.id)}" title="QR code to open the link on a phone" aria-label="QR code to open the link on a phone" aria-haspopup="dialog">${icon("qr")}</button>
           ${navigator.share ? `<button class="btn sm" data-native="${esc(sh.id)}" title="Share…" aria-label="Share via apps">${icon("share")}</button>` : ""}
           <button class="btn sm" data-edit="${esc(sh.id)}" title="Edit link">${icon("edit")}<span>Edit</span></button>
+          <button class="btn sm danger" data-del="${esc(sh.id)}" title="Delete link" aria-label="Delete link /s/${esc(sh.slug)}">${icon("trash")}</button>
         </div>
       </div>
       ${SH.pins[sh.id] ? `<div class="pin-once">${icon("lock")}<span>PIN <b class="mono">${esc(SH.pins[sh.id])}</b> (shown only now)</span><button class="btn sm" data-invite="${esc(sh.id)}">${icon("copy")}<span>Copy invite with PIN</span></button></div>` : ""}
       <div class="chips">${chips}</div>
       ${sessions}
     </div>`;
-  }).join("") : `<div class="empty-chat share-empty">${icon("link")}<b>No links yet</b><span>Create a link so friends can talk to ${esc(S.chat?.chat.persona || "this persona")}. You decide who can enter, what they see and how many answers they get.</span></div>`;
+  }).join("") : `<div class="share-empty"><span class="se-badge">${icon("link")}</span><b>No links yet</b><span>Create a link so friends can talk to ${esc(S.chat?.chat.persona || "this persona")}. You decide who can enter, what they see and how many answers they get.</span></div>`;
   for (const c of $$("#shList .share-card")) {
     const d = c.querySelector("details.sessions"), was = opened.get(c.dataset.id);
     if (d && was != null) d.open = was;
@@ -2356,12 +2406,13 @@ function inviteText(sh, withPin) {
 }
 $("#shList").addEventListener("click", async e => {
   const b = e.target.closest("button,a"); if (!b) return;
-  const sh = SH.shares.find(x => x.id === (b.dataset.copy || b.dataset.qr || b.dataset.native || b.dataset.edit || b.dataset.invite || b.dataset.share));
+  const sh = SH.shares.find(x => x.id === (b.dataset.copy || b.dataset.qr || b.dataset.native || b.dataset.edit || b.dataset.del || b.dataset.invite || b.dataset.share));
   if (b.dataset.qr) openQr(sh);
   else if (b.dataset.copy) copyWithFeedback(b, shareUrl(sh), "Copied");
   else if (b.dataset.invite) copyWithFeedback(b, inviteText(sh, true), "Invite copied");
   else if (b.dataset.native) navigator.share({ title: sh.display_name, text: inviteText(sh, false), url: shareUrl(sh) }).catch(() => { });
   else if (b.dataset.edit) openShareEdit(sh);
+  else if (b.dataset.del) deleteShare(sh);
   else if (b.dataset.end) {
     if (!await confirmDialog({ title: "End this conversation?", text: "The visitor's conversation is deleted and their link stops working. They can start a new one if the share link is still active.", ok: "End", danger: true })) return;
     try { const r = await api(`/api/shares/${sh.id}/sessions/${b.dataset.end}`, { method: "DELETE" }); Object.assign(sh, r); renderShares(); loadState().catch(() => { }); }
@@ -2403,6 +2454,7 @@ function renderShareSummary() {
     ["eye", hist === "none" ? "The export stays hidden" : hist === "recent" ? `The last ${n.toLocaleString()} messages of the export are visible` : "The whole export is visible"],
     [cap ? "chat" : "alert", `${visitors}, ${answers}${cap ? ` · at most ${cap.toLocaleString()} paid answers` : " · no cap on your API costs"}`, cap ? "" : "warn"],
     ...($("#seTg").value ? [["send", `Messages go to «${tgTitle(Number($("#seTg").value))}»: you answer there, or the AI ${Number($("#seAiDelay").value) > 0 ? `answers after ${Number($("#seAiDelay").value)} s` : "answers when you press AI reply"}`]] : []),
+    ...($("#seNudge").checked || $("#seRegen").checked ? [["nudge", `Visitors can ${[$("#seNudge").checked && "let the persona write first", $("#seRegen").checked && "rewrite the last answer"].filter(Boolean).join(" and ")}: each uses an answer`]] : []),
     ["calendar", exp ? `Expires ${new Date(exp).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })}` : "Never expires"],
     ...($("#seEnabled").checked ? [] : [["clock", "Paused: visitors see “not available” until you turn it on", "warn"]]),
     ["info", "The persona still knows the whole export and your notes, but visitors never see them.", "dim"],
@@ -2430,6 +2482,7 @@ function openShareEdit(sh) {
   $("#seMaxSessions").value = sh ? sh.max_sessions : 50; $("#seMaxReplies").value = sh ? sh.max_replies : 200;
   $("#seExpires").value = sh?.expires_at ? sh.expires_at.slice(0, 16) : "";
   $("#seEnabled").checked = sh ? sh.enabled : true;
+  $("#seNudge").checked = !!sh?.allow_nudge; $("#seRegen").checked = !!sh?.allow_regenerate;
   const groups = [...SH.tg.groups];
   if (sh?.telegram_chat_id && !groups.some(g => g.id === sh.telegram_chat_id)) groups.push({ id: sh.telegram_chat_id, title: `${sh.telegram_chat_id} (bot not in group)` });
   $("#seTgRow").classList.toggle("hidden", !SH.tg.enabled && !sh?.telegram_chat_id);
@@ -2456,6 +2509,7 @@ $("#shareEditForm").addEventListener("submit", async e => {
     mode, history: radioValue("seHistory"), history_recent: Number($("#seRecent").value) || 30,
     max_sessions: Number($("#seMaxSessions").value) || 0, max_replies: Number($("#seMaxReplies").value) || 0,
     expires_at: $("#seExpires").value || null, enabled: $("#seEnabled").checked,
+    allow_nudge: $("#seNudge").checked, allow_regenerate: $("#seRegen").checked,
   };
   if (!$("#seTgRow").classList.contains("hidden")) {
     body.telegram_chat_id = $("#seTg").value ? Number($("#seTg").value) : null;
@@ -2479,15 +2533,17 @@ $("#shareEditForm").addEventListener("submit", async e => {
   } catch (err) { toast(err.message, { error: true }); }
   finally { btn.disabled = false; }
 });
-$("#seDelete").onclick = async () => {
-  const sh = SH.editing; if (!sh) return;
+$("#seDelete").onclick = () => SH.editing && deleteShare(SH.editing);
+// From the list or the editor: the link stops working and its visitor conversations go.
+async function deleteShare(sh) {
   if (!await confirmDialog({ title: `Delete the link /s/${sh.slug}?`, text: `The link stops working${sh.sessions.length ? ` and ${sh.sessions.length} visitor conversation${sh.sessions.length > 1 ? "s are" : " is"} deleted` : ""}.`, ok: "Delete link", danger: true })) return;
   try {
     await api(`/api/shares/${sh.id}`, { method: "DELETE" });
     SH.shares = SH.shares.filter(x => x.id !== sh.id); delete SH.pins[sh.id];
     renderShares(); sharePage(false); loadState().catch(() => { });
+    toast(`Link /s/${sh.slug} deleted`);
   } catch (err) { toast(err.message, { error: true }); }
-};
+}
 
 // ---------- home: the roof at night ----------
 const HOME_LINES = [

@@ -12,6 +12,8 @@
 <link rel="icon" href="/favicon.ico" sizes="16x16 32x32 48x48">
 <link rel="icon" type="image/svg+xml" href="/favicon.svg">
 <link rel="stylesheet" href="/app.css">
+<!-- The theme before the first paint (app.js keeps it up to date): no light flash in dark mode. -->
+<script>try { const t = localStorage.getItem("theme") || "auto"; document.documentElement.dataset.theme = t === "dark" || (t === "auto" && matchMedia("(prefers-color-scheme: dark)").matches) ? "dark" : "light"; } catch { }</script>
 </head>
 <body>
 <svg xmlns="http://www.w3.org/2000/svg" width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
@@ -156,6 +158,23 @@ c-46 -3 -74 48 -45 83 4 5 3 5 -5 1z"/></g>
   </aside>
 
   <main class="main" id="main">
+    <!-- Share links: shown while the page loads (the server marks it `booting`), in the shape
+         of what comes next: the start page or the conversation. -->
+    <div class="boot" aria-hidden="true">
+      <div class="boot-view boot-gate-view welcome">
+        <div class="welcome-card gate"><span class="sk sk-avatar xl"></span><span class="sk sk-line" style="width:46%"></span><span class="sk sk-line thin" style="width:70%"></span><span class="sk sk-field"></span><span class="sk sk-field"></span><span class="sk sk-btn"></span></div>
+      </div>
+      <div class="boot-view boot-chat-view chat">
+        <div class="chat-head"><span class="sk sk-avatar"></span><span class="sk-lines"><span class="sk sk-line" style="width:9em"></span><span class="sk sk-line thin" style="width:6em"></span></span></div>
+        <div class="sk-msgs">
+          <span class="sk sk-bubble" style="width:46%"></span><span class="sk sk-bubble" style="width:30%"></span>
+          <span class="sk sk-bubble mine" style="width:38%"></span>
+          <span class="sk sk-bubble" style="width:56%;height:52px"></span><span class="sk sk-bubble" style="width:24%"></span>
+          <span class="sk sk-bubble mine" style="width:28%"></span>
+        </div>
+        <div class="composer"><div class="compose-row"><span class="sk sk-input"></span></div></div>
+      </div>
+    </div>
     <section class="welcome" id="welcome" data-tauri-drag-region>
       <div class="welcome-card tut-card">
         <!-- telegram-export.svg -->
@@ -493,6 +512,8 @@ c-46 -3 -74 48 -45 83 4 5 3 5 -5 1z"/></g>
         <input id="seAiDelay" type="number" min="0" max="3600" value="10" inputmode="numeric">
       </div>
     </div>
+    <label class="switch-row"><span class="sw-text"><b>Visitors can let them write first</b><span class="muted small">A button in the chat: the persona sends a message without one from the visitor</span></span><input type="checkbox" class="switch" id="seNudge"></label>
+    <label class="switch-row"><span class="sw-text"><b>Visitors can rewrite an answer</b><span class="muted small">A button in the chat: the persona's last answer is written again</span></span><input type="checkbox" class="switch" id="seRegen"></label>
     <label class="switch-row"><span class="sw-text"><b>Link is active</b><span class="muted small">Turn off to pause it without deleting anything</span></span><input type="checkbox" class="switch" id="seEnabled" checked></label>
     <ul class="se-summary" id="seSummary" aria-live="polite"></ul>
     <div class="dlg-actions">
@@ -618,6 +639,10 @@ c-46 -3 -74 48 -45 83 4 5 3 5 -5 1z"/></g>
       <h2 id="mdH">Media library</h2>
       <button type="button" class="info-btn" aria-label="What is this?" aria-expanded="false" aria-controls="hMedia"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-info"></use></svg></button>
       <span class="spacer"></span>
+      <span class="md-progress" id="mdProgress">
+        <svg class="md-ring" id="mdMeter" viewBox="0 0 20 20" role="progressbar" aria-label="Described" aria-valuemin="0"><circle cx="10" cy="10" r="7.5" pathLength="100"/><circle class="v" cx="10" cy="10" r="7.5" pathLength="100"/></svg>
+        <span class="md-summary" id="mdSummary" aria-live="polite"></span>
+      </span>
       <button type="button" class="icon-btn" data-close aria-label="Close"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-close"></use></svg></button>
     </div>
     <div class="help" id="hMedia" hidden>The model cannot see pictures or hear audio: in the history a sticker is just <code>&lt;sticker stk_…&gt;</code>. A one-line description per sticker, GIF and photo, and a transcript per voice message, tell it what each one shows or says, so it understands what was sent and answers the same way. <b>Describe with AI</b> sends the images and voice messages to the media model from Settings (it must accept images and audio). You can also write or correct descriptions by hand. Descriptions are saved with the export and used by all its chats.</div>
@@ -640,10 +665,6 @@ c-46 -3 -74 48 -45 83 4 5 3 5 -5 1z"/></g>
       <button class="btn primary" id="mdDescribe"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-sparkle"></use></svg><span>Describe with AI</span></button>
     </div>
     <div class="md-filters" role="tablist" aria-label="Filter" id="mdFilters"></div>
-    <div class="md-progress" id="mdProgress">
-      <div class="md-meter" role="progressbar" aria-label="Described" aria-valuemin="0" id="mdMeter"><div></div></div>
-      <span class="muted small md-summary" id="mdSummary" aria-live="polite"></span>
-    </div>
     <div class="md-grid" id="mdGrid" role="list"></div>
   </div>
 </dialog>

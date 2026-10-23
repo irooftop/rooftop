@@ -264,7 +264,31 @@ fn untitled(svg: &str) -> String {
 }
 
 pub(crate) async fn index() -> Response {
-    let mut r = asset(INDEX_HTML.as_str(), "text/html; charset=utf-8");
+    page(INDEX_HTML.as_str())
+}
+
+/// A share link's pages: marked as a visitor's page and as still loading in the HTML
+/// itself, so the first paint is a skeleton of the start page (`gate`) or of the chat, not
+/// the owner's layout that app.js would replace a moment later.
+fn guest_html(view: &str) -> String {
+    let html = INDEX_HTML.replacen("<html lang=\"en\">", &format!("<html lang=\"en\" class=\"guest booting boot-{view}\">"), 1);
+    html.replacen("<div class=\"app\" id=\"app\">", "<div class=\"app guest-mode\" id=\"app\">", 1)
+}
+static GUEST_GATE_HTML: std::sync::LazyLock<String> = std::sync::LazyLock::new(|| guest_html("gate"));
+static GUEST_CHAT_HTML: std::sync::LazyLock<String> = std::sync::LazyLock::new(|| guest_html("chat"));
+
+/// `/s/{slug}`: the start page of a share link.
+pub(crate) async fn guest_gate_index() -> Response {
+    page(GUEST_GATE_HTML.as_str())
+}
+
+/// `/s/{slug}/{token}`: a visitor's conversation.
+pub(crate) async fn guest_chat_index() -> Response {
+    page(GUEST_CHAT_HTML.as_str())
+}
+
+fn page(html: &'static str) -> Response {
+    let mut r = asset(html, "text/html; charset=utf-8");
     let h = r.headers_mut();
     // Share URLs carry a secret session token: never leak it via Referer.
     h.insert(header::REFERRER_POLICY, HeaderValue::from_static("no-referrer"));

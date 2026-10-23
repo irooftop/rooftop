@@ -1,6 +1,6 @@
 [package]
 name = "rooftop-desktop"
-version = "0.5.3"
+version = "0.5.4"
 edition = "2024"
 rust-version = "1.95"
 description = "iRoof.top desktop app (Tauri 3 shell around the embedded rooftop server)"
