@@ -358,6 +358,12 @@ dialog::backdrop { background: rgba(10, 14, 20, .5); -webkit-backdrop-filter: bl
 .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .grid3 { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1.5fr); gap: 10px 12px; align-items: start; }
 .persona-grid { display: grid; gap: 8px; }
+.nc-src { margin-bottom: 14px; }
+.nc-src label { flex: 1; }
+.nc-intro { margin: -4px 0 12px; }
+.from-notes { margin: 14px 0 0; text-align: center; color: var(--muted); font-size: 14px; }
+.from-notes .link { border: 0; background: none; padding: 0; font: inherit; color: var(--accent); cursor: pointer; text-decoration: underline; text-underline-offset: 3px; text-decoration-color: color-mix(in srgb, var(--accent) 40%, transparent); }
+.from-notes .link:hover { text-decoration-color: currentColor; }
 .persona {
   display: flex !important; grid-template-columns: none; align-items: center; gap: 12px; border: 1.5px solid var(--border); border-radius: 14px; padding: 10px 12px; cursor: pointer;
 }

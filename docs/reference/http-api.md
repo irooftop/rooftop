@@ -18,7 +18,7 @@ JSON over HTTP. With `ROOFTOP_PASSWORD` set, the owner API needs HTTP Basic auth
 | GET | `/api/imports/{id}` | progress of an import job, see below |
 | GET · DELETE | `/api/exports/{id}` | details with the media library · delete with its chats |
 | POST | `/api/exports/{id}/describe` | describe the media library |
-| POST | `/api/chats` | `{export_id, persona, user?, title?, notes?}` |
+| POST | `/api/chats` | `{export_id, persona, user?, title?, notes?}`; without `export_id`, a chat from notes only: `persona` is their name, `user` yours (default `Me`) |
 | GET · PATCH · DELETE | `/api/chats/{id}` | timeline (`?limit=`) · title and notes · delete |
 | POST | `/api/chats/{id}/messages` | `{text?, reply_to?, quote?, sticker_id?, gif_id?}` |
 | POST | `/api/chats/{id}/react` | `{message_id, emoji}` (`""` removes) |

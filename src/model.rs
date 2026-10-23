@@ -214,6 +214,10 @@ pub struct ChatExport {
     pub participants: Vec<Participant>,
     pub messages: Vec<Message>,
     pub library: Vec<LibraryItem>,
+    /// Not imported: started from a name and notes only (New chat → From notes). It has
+    /// no messages, belongs to its one chat, and goes when that chat is deleted.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub blank: bool,
 }
 
 impl ChatExport {

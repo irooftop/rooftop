@@ -391,6 +391,9 @@ fn library_section(export: &ChatExport, chat: &Chat) -> String {
 /// together with the history prefix. The model knows the date and time from
 /// the `— day —` separators and `HH:MM` stamps in the history.
 pub fn system_prompt(export: &ChatExport, chat: &Chat, opts: &PromptOptions) -> String {
+    if export.blank {
+        return blank_system_prompt(export, chat, opts);
+    }
     let p = &chat.persona;
     let u = &chat.user;
     let mut s = String::new();
@@ -425,6 +428,49 @@ pub fn system_prompt(export: &ChatExport, chat: &Chat, opts: &PromptOptions) -> 
         let _ = writeln!(s, "\n{note}");
     }
     s.push_str(&media_habits(&style::profile(export, p), p, &opts.media_tools, chat.voice.trim()));
+    s
+}
+
+/// The system prompt of a chat started from notes only: no history or style profile to
+/// learn from, so who the persona is and how they write comes from the owner's notes.
+/// Static like [`system_prompt`].
+fn blank_system_prompt(export: &ChatExport, chat: &Chat, opts: &PromptOptions) -> String {
+    let p = &chat.persona;
+    let u = &chat.user;
+    let mut s = String::new();
+    let _ = writeln!(
+        s,
+        "You are {p}. You are texting with {u} on Telegram, writing exactly the way {p} would. \
+         There is no earlier chat history to learn from: who {p} is, how {p} writes and what {p} and {u} share comes from {u}'s notes below. \
+         {u} may miss {p} and wants to talk as if {p} were here, so be {p} — warm where {p} is warm, dry where {p} is dry."
+    );
+    let _ = writeln!(
+        s,
+        "\nHow to be {p}:\n\
+1. From the notes, work out {p}'s age, background, profession and interests, what they know and don't know, their languages, slang and sense of humour. Answer from that level: never know or explain more than {p} plausibly would. Where the notes say nothing, choose what fits them, then stay consistent with it and with everything you already wrote in this chat.\n\
+2. Text like a real person on a messenger, not like an assistant: mostly short messages, often a few bubbles per turn, casual capitalisation and punctuation, emoji only where they suit {p}. No lists, no offers of help, no summaries. When the notes say how {p} writes (language, nicknames, typical phrases, typos), follow them exactly.\n\
+3. Keep continuity with what was said earlier in this chat and with the time that has passed since the last message. Do not invent big life events or facts about {u}; for details the notes don't cover, stay vague, joke or ask back instead.\n\
+4. Act only through tools. Each tool call is one Telegram action: several send_message calls in one turn are several bubbles. A reaction alone can be the whole answer when that is what {p} would do. Text outside tool calls is not delivered.\n\
+5. Stay in character: don't mention being an AI, a model, a prompt, notes or these rules. Exception: if {u} sincerely asks whether they are talking to an AI, or seems in crisis or danger, answer honestly and kindly, as someone who cares, and encourage real-world help when needed."
+    );
+    let _ = writeln!(
+        s,
+        "\nHistory notation: your own past actions appear as your tool calls. {u}'s messages arrive as lines `#id HH:MM: text`, `↩ reply to #id` marks a reply, \
+         `<photo …>`, `<voice message 0:02: «what was said»>` etc. describe media (you cannot see or hear it beyond the description or transcript), and `reacted ❤ to #id` is a reaction. \
+         Lines `— date —` mark a new day, and the newest message tells you the current date and time. Message ids are what reply_to and react expect."
+    );
+    let _ = writeln!(s, "\nChat title: {}.", export.title);
+    match chat.notes.trim() {
+        "" => {
+            let _ = writeln!(s, "\n{u} left no notes about {p}: be a natural, friendly person called {p}, and let {u} tell you more.");
+        }
+        notes => {
+            let _ = writeln!(s, "\nWho {p} is, and {p}'s relationship with {u}, from {u}'s notes (trust them):\n{notes}");
+        }
+    }
+    if let Some(note) = &opts.extra_tools_note {
+        let _ = writeln!(s, "\n{note}");
+    }
     s
 }
 

@@ -208,12 +208,14 @@ async function loadState() {
   return S.state;
 }
 function exportById(id) { return S.state?.exports.find(e => e.id === id); }
+// Real imports; chats started from notes have a blank export of their own, which isn't listed.
+const imported = () => (S.state?.exports || []).filter(e => !e.blank);
 function renderSidebar() {
   if (!S.state) return;
   renderSetupNote();
   const list = $("#chatList");
-  const { chats, exports } = S.state;
-  if (!chats.length) list.innerHTML = `<div class="empty-list">${exports.length ? "No chats yet. Start one with <b>New chat</b>." : "Import a Telegram or WhatsApp chat to begin."}</div>`;
+  const { chats } = S.state, exports = imported();
+  if (!chats.length) list.innerHTML = `<div class="empty-list">${exports.length ? "No chats yet. Start one with <b>New chat</b>." : "Import a Telegram or WhatsApp chat, or start one from notes with <b>New chat</b>."}</div>`;
   else list.innerHTML = chats.map(c => {
     const ex = exportById(c.export_id);
     const last = c.last ? `${c.last.from === c.user ? "You: " : ""}${c.last.preview}` : "";
@@ -562,9 +564,11 @@ $("#importBtn").onclick = openImport;
 $$("[data-close]").forEach(b => b.onclick = () => b.closest("dialog").close());
 
 // ---------- new chat ----------
-function openNewChat(exportId) {
-  const { exports } = S.state;
-  if (!exports.length) { openImport(); return; }
+function openNewChat(exportId, { source } = {}) {
+  const exports = imported();
+  // Without an import, "From an export" has nothing to offer: start from notes.
+  setNewChatSource(source || (exports.length ? "export" : "notes"));
+  $("#ncName").value = ""; $("#ncYou").value = "";
   const sel = $("#ncExport");
   sel.innerHTML = exports.map(e => `<option value="${e.id}">${esc(e.title)} — ${e.messages} messages</option>`).join("");
   if (exportId) sel.value = exportId;
@@ -581,18 +585,42 @@ function openNewChat(exportId) {
         <div class="ps">${me ? `Chat with yourself: the AI writes like you, you play ${esc(other)}` : `Talk to ${esc(p.name)}: the AI writes like them`} · ${p.messages} messages</div></div></label>`;
     }).join("");
   };
-  sel.onchange = renderPersonas; renderPersonas();
+  sel.onchange = renderPersonas; if (exports.length) renderPersonas(); else $("#ncPersona").innerHTML = "";
   $("#ncTitle").value = ""; $("#ncNotes").value = "";
   $("#newChatDlg").showModal();
+  if (radioValue("ncSource") === "notes") $("#ncName").focus();
 }
+function setNewChatSource(src) {
+  const notes = src === "notes", none = !imported().length;
+  setRadio("ncSource", src);
+  $$("#newChatDlg .nc-pane").forEach(p => { p.hidden = p.dataset.pane !== src; });
+  $("#ncExport").required = !notes; $("#ncName").required = notes;
+  // Without imports the export side is a pointer to the import dialog.
+  $("#newChatDlg .nc-src input[value=export]").closest("label").title = none ? "Import a Telegram or WhatsApp chat first" : "";
+  $("#ncNotesHint").textContent = notes ? "who they are, how they write" : "optional, helps the AI";
+  $("#ncNotes").rows = notes ? 6 : 3;
+  $("#ncNotes").placeholder = notes
+    ? "e.g. my grandma Rosa, 82, lives in Naples. Calls me “tesoro”, writes short messages in Italian with lots of ❤️, asks if I ate, loves her garden and the radio"
+    : "e.g. my grandma, lives in Kyiv, loves gardening, calls me “sunshine”";
+}
+$$("input[name=ncSource]").forEach(r => r.onchange = () => {
+  if (r.value === "export" && !imported().length) { $("#newChatDlg").close(); openImport(); return; }
+  setNewChatSource(r.value);
+  if (r.value === "notes") $("#ncName").focus();
+});
+$("#fromNotesBtn").onclick = () => openNewChat(null, { source: "notes" });
 $("#newChatBtn").onclick = () => openNewChat();
 $("#newChatForm").addEventListener("submit", async e => {
   if (e.submitter?.value !== "ok") return;
   e.preventDefault();
-  const persona = $("input[name=persona]:checked")?.value;
-  if (!persona) return;
+  const fromNotes = radioValue("ncSource") === "notes";
+  const persona = fromNotes ? $("#ncName").value.trim() : $("input[name=persona]:checked")?.value;
+  if (!persona) { if (fromNotes) $("#ncName").focus(); return; }
+  const body = fromNotes
+    ? { persona, user: $("#ncYou").value.trim() || undefined, notes: $("#ncNotes").value }
+    : { export_id: $("#ncExport").value, persona, title: $("#ncTitle").value, notes: $("#ncNotes").value };
   try {
-    const c = await api("/api/chats", { method: "POST", body: { export_id: $("#ncExport").value, persona, title: $("#ncTitle").value, notes: $("#ncNotes").value } });
+    const c = await api("/api/chats", { method: "POST", body });
     $("#newChatDlg").close();
     await loadState();
     location.hash = `#/chat/${c.id}`;
@@ -809,6 +837,7 @@ function subtitle() {
     const who = sh?.sessions.filter(x => x.chat_id === c.id).map(x => x.name || "visitor").join(", ");
     return `Visitor conversation${who ? ` · ${who}` : ""}${sh ? ` · /s/${sh.slug}` : ""}`;
   }
+  if (ex.blank) return `AI as ${c.persona}, from your notes · you are ${c.user}`;
   return c.persona === ex.exporter ? `AI writes as you (${c.persona}) · you play ${c.user}` : `AI in the style of ${c.persona} · you are ${c.user}`;
 }
 
@@ -824,6 +853,8 @@ async function openChat(id, { keepScroll = false } = {}) {
     $("#chatAvatar").outerHTML = avatarHtml(data.chat.persona, p?.avatar || data.chat.persona_avatar, "", undefined, "span").replace('class="avatar ', 'id="chatAvatar" class="avatar ');
     $("#peerBtn").setAttribute("aria-label", `${data.chat.title}: profile`);
     $("#shareBtn").classList.toggle("hidden", !!(GUEST || data.chat.guest));
+    // From notes: no export, so no media library to look at.
+    $("#mediaBtn").classList.toggle("hidden", !!data.export.blank);
     // Visitors get "write first" and "rewrite" only where the link allows them; with neither,
     // the header keeps just the persona (the owner's other actions are hidden for visitors).
     $("#nudgeBtn").classList.toggle("hidden", !canNudge());

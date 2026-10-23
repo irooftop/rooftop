@@ -51,6 +51,14 @@ rooftop --import ./examples/telegram
 ```
 :::
 
+### No export? Start from notes
+
+**New chat → From notes** needs only their name (yours is optional) and a few lines about them: who they
+are, what you share, how they write ("calls me tesoro, short Italian messages, lots of ❤️"). The AI writes as them
+from those notes alone. There is no style profile or media library without a history, so the more the notes say
+about how they write, the closer it gets. You can edit the notes in the chat at any time (✎), and share the chat by
+link like any other. Deleting the chat deletes everything it had.
+
 ## What's in the window
 
 | Button | What it does |

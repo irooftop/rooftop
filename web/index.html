@@ -189,6 +189,7 @@ c-46 -3 -74 48 -45 83 4 5 3 5 -5 1z"/></g>
           <p class="dz-status" id="importStatus" role="status" hidden></p>
           <div class="progress hidden" id="uploadProgress"><div></div></div>
         </div>
+        <p class="from-notes">No export at hand? <button type="button" class="link" id="fromNotesBtn">Start a chat from notes</button></p>
       </div>
     </section>
 
@@ -279,21 +280,41 @@ c-46 -3 -74 48 -45 83 4 5 3 5 -5 1z"/></g>
 <dialog id="newChatDlg" aria-labelledby="ncH">
   <form method="dialog" class="dlg compact" id="newChatForm">
     <div class="dlg-head"><h2 id="ncH">New chat</h2><button type="button" class="icon-btn" data-close aria-label="Close"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-close"></use></svg></button></div>
-    <div class="field">
-      <div class="field-head"><label for="ncExport">Export</label></div>
-      <select id="ncExport" required></select>
+    <!-- From an imported export (the AI learns the style from it), or from notes only. -->
+    <div class="seg nc-src" role="radiogroup" aria-label="Start from">
+      <label><input type="radio" name="ncSource" value="export" checked><span><svg class="i" aria-hidden="true" focusable="false"><use href="#i-archive"></use></svg>From an export</span></label>
+      <label><input type="radio" name="ncSource" value="notes"><span><svg class="i" aria-hidden="true" focusable="false"><use href="#i-edit"></use></svg>From notes</span></label>
     </div>
-    <fieldset class="field">
-      <legend class="field-head"><span class="legend">Who should the AI be?</span></legend>
-      <div id="ncPersona" class="persona-grid"></div>
-    </fieldset>
-    <div class="field">
-      <div class="field-head"><label for="ncTitle">Title</label><span class="field-hint">optional</span></div>
-      <input id="ncTitle" placeholder="Same as the persona's name" autocomplete="off">
+    <div class="nc-pane" data-pane="export">
+      <div class="field">
+        <div class="field-head"><label for="ncExport">Export</label></div>
+        <select id="ncExport" required></select>
+      </div>
+      <fieldset class="field">
+        <legend class="field-head"><span class="legend">Who should the AI be?</span></legend>
+        <div id="ncPersona" class="persona-grid"></div>
+      </fieldset>
+      <div class="field">
+        <div class="field-head"><label for="ncTitle">Title</label><span class="field-hint">optional</span></div>
+        <input id="ncTitle" placeholder="Same as the persona's name" autocomplete="off">
+      </div>
+    </div>
+    <div class="nc-pane" data-pane="notes" hidden>
+      <p class="field-note nc-intro">No chat history needed: describe the person, and the AI writes as them from your notes. You can import a real chat later for a closer style.</p>
+      <div class="grid2 tight">
+        <div class="field">
+          <div class="field-head"><label for="ncName">Their name</label></div>
+          <input id="ncName" maxlength="64" autocomplete="off" placeholder="e.g. Grandma Rosa">
+        </div>
+        <div class="field">
+          <div class="field-head"><label for="ncYou">Your name</label><span class="field-hint">optional</span></div>
+          <input id="ncYou" maxlength="64" autocomplete="nickname" placeholder="Me">
+        </div>
+      </div>
     </div>
     <div class="field">
-      <div class="field-head"><label for="ncNotes">Notes about this person</label><span class="field-hint">optional, helps the AI</span></div>
-      <textarea id="ncNotes" rows="3" placeholder="e.g. my grandma, lives in Kyiv, loves gardening, calls me “sunshine”"></textarea>
+      <div class="field-head"><label for="ncNotes">Notes about this person</label><span class="field-hint" id="ncNotesHint">optional, helps the AI</span></div>
+      <textarea id="ncNotes" rows="3" maxlength="20000" placeholder="e.g. my grandma, lives in Kyiv, loves gardening, calls me “sunshine”"></textarea>
     </div>
     <div class="dlg-actions">
       <button value="cancel" class="btn" formnovalidate>Cancel</button>

@@ -323,6 +323,7 @@ pub(crate) fn export_summary(rec: &ExportRecord) -> Value {
         "messages": e.messages.len(),
         "library": e.library.len(),
         "described": e.library.iter().filter(|i| i.description.is_some()).count(),
+        "blank": e.blank,
     })
 }
 
@@ -789,6 +790,8 @@ async fn patch_library_item(State(st): S, Path((id, item)): Path<(String, String
 
 #[derive(Deserialize)]
 struct NewChat {
+    /// Empty: a chat without an imported history, from `persona`, `user` and `notes` only.
+    #[serde(default)]
     export_id: String,
     persona: String,
     user: Option<String>,
@@ -831,12 +834,57 @@ pub fn make_chat(rec: &ExportRecord, persona: &str, user: Option<&str>, title: O
 }
 
 async fn create_chat(State(st): S, Json(req): Json<NewChat>) -> ApiResult {
-    let rec = st.db.read().await.exports.get(&req.export_id).cloned().ok_or_else(|| anyhow!("export not found"))?;
-    let chat = make_chat(&rec, &req.persona, req.user.as_deref(), req.title.as_deref(), req.notes.as_deref().unwrap_or_default())?;
+    let rec = if req.export_id.is_empty() {
+        blank_export(&st, &req).await?
+    } else {
+        st.db.read().await.exports.get(&req.export_id).cloned().ok_or_else(|| anyhow!("export not found"))?
+    };
+    // A blank export holds the cleaned-up names: the person first, then the user.
+    let (persona, user) = match &rec.export.participants[..] {
+        [p, u] if rec.export.blank => (p.name.as_str(), Some(u.name.as_str())),
+        _ => (req.persona.as_str(), req.user.as_deref()),
+    };
+    let chat = make_chat(&rec, persona, user, req.title.as_deref(), req.notes.as_deref().unwrap_or_default())?;
     st.paths.save_chat(&chat)?;
     let summary = chat_summary(&chat, Some(&rec));
     st.db.write().await.chats.insert(chat.id.clone(), chat);
     Ok(Json(summary))
+}
+
+/// The export behind a chat started from notes only: the two people, no messages.
+async fn blank_export(st: &AppState, req: &NewChat) -> Result<Arc<ExportRecord>, ApiError> {
+    let clean = |s: &str| s.split_whitespace().collect::<Vec<_>>().join(" ");
+    let persona = clean(&req.persona);
+    let user = req.user.as_deref().map(clean).filter(|u| !u.is_empty()).unwrap_or_else(|| "Me".into());
+    if persona.is_empty() {
+        return Err(bad("enter the name of the person"));
+    }
+    if persona.chars().count() > 64 || user.chars().count() > 64 {
+        return Err(bad("names can be at most 64 characters"));
+    }
+    if persona == user {
+        return Err(bad("the person and you need different names"));
+    }
+    if req.notes.as_deref().unwrap_or_default().chars().count() > 20_000 {
+        return Err(bad("the notes can be at most 20,000 characters"));
+    }
+    let id = uuid::Uuid::new_v4().simple().to_string()[..12].to_string();
+    let rec = ExportRecord {
+        id: id.clone(),
+        imported_at: now_string(),
+        // Never equal to an import's, so no import is ever taken for this one.
+        fingerprint: format!("blank:{id}"),
+        export: ChatExport {
+            title: persona.clone(),
+            participants: [persona, user].map(|name| crate::model::Participant { name, avatar: None, messages: 0 }).into(),
+            blank: true,
+            ..Default::default()
+        },
+    };
+    st.paths.save_export(&rec)?;
+    let rec = Arc::new(rec);
+    st.db.write().await.exports.insert(id, rec.clone());
+    Ok(rec)
 }
 
 /// Messages of the merged export + live timeline in display order.
@@ -1067,6 +1115,12 @@ async fn delete_chat(State(st): S, Path(id): Path<String>) -> ApiResult {
         let shares: Vec<String> = db.shares.values().filter(|s| s.chat_id == id).map(|s| s.id.clone()).collect();
         for sid in &shares {
             crate::share_api::remove_share(&st, &mut db, sid)?;
+        }
+        // A chat started from notes owns its blank export: nothing else can use it.
+        let blank = db.exports.get(&chat.export_id).is_some_and(|r| r.export.blank);
+        if blank && !db.chats.values().any(|c| c.export_id == chat.export_id) {
+            db.exports.remove(&chat.export_id);
+            st.paths.delete_export(&chat.export_id)?;
         }
     }
     Ok(Json(json!({"ok": true})))

@@ -45,6 +45,7 @@ async fn setup() -> Env {
         ],
         messages,
         library: Vec::new(),
+        blank: false,
     };
     let rec = Arc::new(ExportRecord { id: "exp1".into(), imported_at: "now".into(), fingerprint: "fp".into(), export });
     state.paths.save_export(&rec).unwrap();

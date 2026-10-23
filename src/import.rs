@@ -183,7 +183,7 @@ pub fn parse(src: &Path, report: Report) -> Result<Staged> {
         t if !t.is_empty() => t,
         _ => participants.first().map_or_else(|| "Chat".into(), |p| p.name.clone()),
     };
-    let export = ChatExport { title, participants, messages: parsed.messages, library: Vec::new() };
+    let export = ChatExport { title, participants, messages: parsed.messages, library: Vec::new(), blank: false };
     Ok(Staged { root, export, avatars: parsed.avatars })
 }
 
