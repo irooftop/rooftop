@@ -198,6 +198,7 @@ async fn serve(args: ServeArgs) -> Result<()> {
             max_upload_bytes: args.max_upload_mb.saturating_mul(1024 * 1024),
             trust_proxy: args.trust_proxy,
             relay_hub,
+            desktop: None,
         },
     );
     let listener = tokio::net::TcpListener::bind(&args.addr).await.with_context(|| format!("binding {}", args.addr))?;

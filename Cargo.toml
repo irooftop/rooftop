@@ -1,6 +1,6 @@
 [package]
 name = "rooftop"
-version = "0.5.1"
+version = "0.5.2"
 edition = "2024"
 rust-version = "1.88"
 description = "iRoof.top: continue a Telegram or WhatsApp chat with an LLM that writes in the style of a person from the export (OpenAI-compatible, MCP)"

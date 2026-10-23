@@ -1,6 +1,6 @@
 [package]
 name = "rooftop-desktop"
-version = "0.5.1"
+version = "0.5.2"
 edition = "2024"
 rust-version = "1.95"
 description = "iRoof.top desktop app (Tauri 3 shell around the embedded rooftop server)"
@@ -16,6 +16,7 @@ tauri-build = { version = "3.0.0-alpha.4", features = [] }
 [dependencies]
 anyhow = "1.0.104"
 axum = "0.8.9"
+rfd = { version = "0.17.2", default-features = false, features = ["gtk3"] }
 rooftop = { path = ".." }
 tauri = { version = "3.0.0-alpha.5", features = [] }
 tauri-runtime-wry = "3.0.0-alpha.5"

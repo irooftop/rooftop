@@ -62,6 +62,28 @@ pub struct ServerOptions {
     pub trust_proxy: bool,
     /// Relay hub ([`crate::relay_hub`]): serves `<name>.<domain>` for iRoof.top apps.
     pub relay_hub: Option<Arc<crate::relay_hub::Hub>>,
+    /// The desktop app's native file access (`/api/local/*`); `None` on a server.
+    pub desktop: Option<Desktop>,
+}
+
+/// What the desktop app lends the server. Its webview can't always read the files the
+/// user chooses (on macOS, WebKit's sandboxed networking process is refused some of them,
+/// so an upload arrives empty or fails with `NotReadableError`): the app shows the native
+/// picker, or hands over dropped paths, and the server imports from the paths directly.
+#[derive(Clone)]
+pub struct Desktop {
+    /// Shows the native picker; `None` when it was cancelled.
+    pub pick: Arc<dyn Fn(Pick) -> futures::future::BoxFuture<'static, Option<PathBuf>> + Send + Sync>,
+}
+
+/// What the native picker asks for.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Pick {
+    /// An export folder.
+    Folder,
+    /// A `.zip` or a WhatsApp `.txt`.
+    File,
 }
 
 /// Largest request a visitor can send (voice messages are ≤ 5 MiB).
@@ -138,6 +160,7 @@ pub fn router(state: Arc<AppState>, opts: ServerOptions) -> Router {
         .route("/api/telegram", get(crate::tgbot::status))
         .route("/api/telegram/link", post(crate::tgbot::add_link))
         .merge(crate::sharing::owner_routes())
+        .merge(opts.desktop.map(local_routes).unwrap_or_default())
         .route("/media/{export_id}/{*path}", get(media))
         .layer(middleware::from_fn(move |req: Request, next: Next| {
             let password = password.clone();
@@ -360,6 +383,44 @@ async fn upload_export(State(st): S, mut mp: Multipart) -> ApiResult<(StatusCode
         }
     }
     Ok((StatusCode::ACCEPTED, Json(json!({"id": start_import_job(&st, tmp)}))))
+}
+
+/// `/api/local/*`, desktop app only: the native picker and imports by path.
+fn local_routes(desktop: Desktop) -> Router<Arc<AppState>> {
+    #[derive(Deserialize)]
+    struct PickReq {
+        kind: Pick,
+    }
+    #[derive(Deserialize)]
+    struct ImportReq {
+        paths: Vec<PathBuf>,
+    }
+    let pick = desktop.pick.clone();
+    Router::new()
+        // `Json` bodies only: a cross-site page can't send those without a CORS preflight,
+        // which this server never answers.
+        .route(
+            "/api/local/pick",
+            post(move |Json(req): Json<PickReq>| async move {
+                let path = pick(req.kind).await;
+                Json(json!({"path": path.map(|p| p.display().to_string())}))
+            }),
+        )
+        .route(
+            "/api/local/import",
+            post(|State(st): S, Json(req): Json<ImportReq>| async move {
+                let paths = req.paths;
+                let src = tokio::task::spawn_blocking(move || crate::imports::resolve_local(&paths))
+                    .await
+                    .map_err(anyhow::Error::from)?
+                    .map_err(|e| bad(format!("{e:#}")))?;
+                let job = st.imports.create();
+                let id = job.id();
+                let name = src.file_name().map(|n| n.to_string_lossy().into_owned());
+                tokio::spawn(crate::imports::run_local(st.clone(), job, src, UNZIP_LIMIT));
+                ApiResult::<(StatusCode, Json<Value>)>::Ok((StatusCode::ACCEPTED, Json(json!({"id": id, "name": name}))))
+            }),
+        )
 }
 
 /// Starts the background import of the upload directory `tmp` (its `files/`), which the job removes.

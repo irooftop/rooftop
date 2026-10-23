@@ -34,7 +34,10 @@ Exports of 100,000+ messages and many gigabytes work the same way: drop the fold
 
 Only one import runs at a time; an error stays visible in the drop zone and you can choose the folder again.
 
-::: details When a file can't be uploaded
+In the [desktop app](./desktop) none of this uploading happens: the app reads the folder, `.zip` or `.txt` from where it
+is (steps 4 to 6), which is faster and unaffected by the browser problems below.
+
+::: details When a file can't be uploaded (browser)
 A file the browser can no longer read (moved, changed, or an iCloud/OneDrive placeholder that isn't downloaded) is
 found and skipped, and so is a single file that keeps breaking its batch: the batch is split until that file is
 isolated. Skipped media shows as missing in the chat; the message after the import names one, and the browser console

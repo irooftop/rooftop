@@ -13,6 +13,8 @@ JSON over HTTP. With `ROOFTOP_PASSWORD` set, the owner API needs HTTP Basic auth
 | POST | `/api/uploads/{id}/check` | after the chat files, before the media: `{"bytes"}` still to send → `{title, messages, existing, fits, free_bytes, needed_bytes}` (already imported? enough disk space?) |
 | POST | `/api/uploads/{id}/import` | import everything uploaded so far: `202 {"id"}` of the import job |
 | DELETE | `/api/uploads/{id}` | drop an unfinished upload (abandoned ones are removed after 24 h and on restart) |
+| POST | `/api/local/pick` | desktop app only: show the native picker, `{"kind": "folder" \| "file"}` → `{"path"}` (`null` when cancelled) |
+| POST | `/api/local/import` | desktop app only: import from this computer, `{"paths": […]}` (a folder, `.zip` or WhatsApp `.txt`; files inside one export stand for its folder) → `202 {"id", "name"}` of the import job; the source is copied, never changed |
 | GET | `/api/imports/{id}` | progress of an import job, see below |
 | GET · DELETE | `/api/exports/{id}` | details with the media library · delete with its chats |
 | POST | `/api/exports/{id}/describe` | describe the media library |

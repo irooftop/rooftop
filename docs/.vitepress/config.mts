@@ -13,9 +13,12 @@ export default defineConfig({
   cleanUrls: true,
   lastUpdated: true,
   appearance: true,
+  // Quiet, nearly monochrome code, like the rest of the page.
+  markdown: { theme: { light: "min-light", dark: "min-dark" } },
   head: [
     ["link", { rel: "icon", type: "image/svg+xml", href: "/rooftop/img/favicon.svg" }],
-    ["meta", { name: "theme-color", content: "#3390ec" }],
+    ["meta", { name: "theme-color", content: "#ffffff", media: "(prefers-color-scheme: light)" }],
+    ["meta", { name: "theme-color", content: "#0b1016", media: "(prefers-color-scheme: dark)" }],
     ["meta", { property: "og:title", content: "iRoof.top" }],
     ["meta", { property: "og:description", content: "Talk to the people you miss: an LLM continues your Telegram or WhatsApp chat in their style." }],
   ],

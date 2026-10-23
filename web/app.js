@@ -489,12 +489,51 @@ function bindDropzone(el) {
   });
 }
 bindDropzone($("#dropzone")); bindDropzone($("#dropzone2"));
+// Desktop app: the export is imported from its path. The webview can't be trusted to read
+// the files (on macOS, WebKit's sandboxed networking process is refused some of them, and
+// uploads arrive empty), so the app shows the native picker and passes on dropped paths.
+const NATIVE_FILES = SHELL?.files === "native";
+async function importLocal(paths) {
+  if (IMP.busy || !paths.length) return;
+  IMP.skipped = null;
+  setImportBusy(true);
+  setImportStatus("Reading the export…", { indeterminate: true });
+  let job;
+  try { job = await api("/api/local/import", { method: "POST", body: { paths } }); }
+  catch (e) { return importFailed(`Import failed: ${e.message}.`); }
+  pollImport(job.id);
+}
+async function pickNative(kind) {
+  if (IMP.busy) return;
+  setImportStatus(kind === "folder" ? "Waiting for the folder…" : "Waiting for the file…", { indeterminate: true });
+  let r;
+  try { r = await api("/api/local/pick", { method: "POST", body: { kind } }); }
+  catch (e) { return importFailed(`Can't show the file picker: ${e.message}.`); }
+  if (r.path) importLocal([r.path]); else if (!IMP.busy) setImportStatus("");
+}
+// Native drags (see desktop/src/main.rs): a drop on a drop zone, or anywhere over the open
+// import dialog, imports. Coordinates are physical pixels from the top left of the page.
+const dropTarget = (x, y) => {
+  const el = x >= 0 && document.elementFromPoint(x / devicePixelRatio, y / devicePixelRatio);
+  if (!el) return null;
+  const dlg = $("#importDlg");
+  return el.closest(".dropzone") || (dlg.open && dlg.contains(el) ? $("#dropzone2") : null);
+};
+window.__IROOF_DROP__ = (type, x, y, paths) => {
+  const target = type === "leave" || IMP.busy ? null : dropTarget(x, y);
+  for (const dz of [$("#dropzone"), $("#dropzone2")]) dz.classList.toggle("drag", type !== "drop" && dz === target);
+  if (type === "drop" && target) importLocal(paths);
+};
 // The folder picker can take long to hand over tens of thousands of files: say so at once.
-const pickFolder = () => { setImportStatus("Waiting for the folder…", { indeterminate: true }); $("#folderInput").click(); };
+const pickFolder = () => {
+  if (NATIVE_FILES) return pickNative("folder");
+  setImportStatus("Waiting for the folder…", { indeterminate: true }); $("#folderInput").click();
+};
+const pickZip = () => (NATIVE_FILES ? pickNative("file") : $("#zipInput").click());
 $("#folderInput").addEventListener("cancel", () => { if (!IMP.busy) setImportStatus(""); });
 $("#pickFolder").onclick = pickFolder;
-$("#pickZip").onclick = () => $("#zipInput").click();
-$$("[data-pick]").forEach(b => b.onclick = () => (b.dataset.pick === "zip" ? $("#zipInput").click() : pickFolder()));
+$("#pickZip").onclick = pickZip;
+$$("[data-pick]").forEach(b => b.onclick = () => (b.dataset.pick === "zip" ? pickZip() : pickFolder()));
 $("#folderInput").onchange = e => {
   const files = [...e.target.files].map(f => ({ file: f, path: f.webkitRelativePath || f.name }));
   e.target.value = "";

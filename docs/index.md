@@ -5,10 +5,6 @@ hero:
   name: iRoof.top
   text: Talk to the people you miss
   tagline: Export a Telegram or WhatsApp chat. An LLM continues it in the style of one person, with their bubbles, stickers, GIFs, reactions and voice. On your computer, with any model, offline if you like.
-  image:
-    light: /img/logo_light.svg
-    dark: /img/logo_dark.svg
-    alt: iRoof.top
   actions:
     - theme: brand
       text: Get started
@@ -21,48 +17,39 @@ hero:
       link: /features/how-it-works
 
 features:
-  - icon: 💬
-    title: Their style, not just their words
+  - title: Their style, not just their words
     details: A style profile from the whole export, and every bubble, sticker, GIF, reply and reaction replayed to the model as a tool call.
     link: /features/how-it-works
     linkText: How it works
-  - icon: 🔒
-    title: Private, and offline if you want
+  - title: Private, and offline if you want
     details: Chats stay in your data folder. With a local model and Offline mode on, the app refuses every request that would leave your computer.
     link: /guide/offline
     linkText: Offline & privacy
-  - icon: 📚
-    title: Years of chat, gigabytes of media
+  - title: Years of chat, gigabytes of media
     details: 120,000+ messages and 30,000 files import with live progress. A repeat import is spotted from the messages, before any media is uploaded.
     link: /guide/export#large-exports
     linkText: Large exports
-  - icon: 🎙️
-    title: Photos, stickers and voice
+  - title: Photos, stickers and voice
     details: A media library that describes what was sent and transcribes voice, in the order you choose, stoppable at any time.
     link: /features/media
     linkText: Photos & voice
-  - icon: 🔗
-    title: Share links
+  - title: Share links
     details: Let a friend talk to the persona at /s/name, with a PIN and limits, on your Wi‑Fi or at name.iroof.top.
     link: /features/share-links
     linkText: Share links
-  - icon: ✈️
-    title: Answer from Telegram
+  - title: Answer from Telegram
     details: Visitor messages land in your Telegram group. Reply yourself, or let the AI answer after a countdown.
     link: /features/telegram
     linkText: Telegram
-  - icon: 🧩
-    title: Any model, any MCP server
+  - title: Any model, any MCP server
     details: OpenAI, OpenRouter, Gemini, Ollama, LM Studio, llama.cpp… plus MCP tools over Streamable HTTP or stdio.
     link: /features/mcp
     linkText: MCP tools
-  - icon: 🔍
-    title: Nothing hidden
+  - title: Nothing hidden
     details: The exact JSON sent to the model is one click away, with its size, the history budget and the tokens used.
     link: /guide/getting-started#what-s-in-the-window
     linkText: What's in the window
-  - icon: 📦
-    title: One small binary
+  - title: One small binary
     details: A Rust server with the web UI inside, desktop apps for macOS, Windows and Linux, Homebrew and a Docker image.
     link: /guide/getting-started
     linkText: Install

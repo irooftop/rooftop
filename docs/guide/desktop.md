@@ -28,6 +28,7 @@ endpoint, key and model, and press **Test**. If `OPENAI_BASE_URL`, `OPENAI_API_K
 | Share links | on the same Wi‑Fi or over the internet: [Open links on other devices](../features/share-links#open-links-on-other-devices) |
 | Other sites | links such as `t.me` open in your browser |
 | macOS window | no system title bar: the app's headers continue under the traffic lights and drag the window |
+| Importing | the app reads the export itself: **Choose folder…** opens the system picker, and a dropped folder, `.zip` or `.txt` is imported from where it is. Nothing is uploaded, the original stays untouched, and on APFS the media are cloned rather than copied, so even a 13 GB export takes almost no extra space |
 
 ## Build it yourself
 

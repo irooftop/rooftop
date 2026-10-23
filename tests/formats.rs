@@ -583,3 +583,106 @@ async fn index_svgs_have_no_tooltip_titles() {
     assert!(html.contains(r#"id="tutorial""#) && html.contains(r#"aria-label="How to export a chat in Telegram Desktop"#));
     assert!(!html.contains("aria-labelledby=\"tut-title\"") && !html.contains("sceneTitle"));
 }
+
+// ---------------------------------------------------------------- desktop: imports by path
+
+fn desktop_app(picked: Option<std::path::PathBuf>) -> (axum::Router, tempfile::TempDir) {
+    let tmp = tempfile::tempdir().unwrap();
+    let paths = Paths::new(tmp.path().to_path_buf());
+    let db = paths.load().unwrap();
+    let llm = LlmConfig { base_url: "http://127.0.0.1:9/v1".into(), api_key: String::new(), model: "test".into(), temperature: None };
+    let desktop = server::Desktop {
+        pick: std::sync::Arc::new(move |_| {
+            let p = picked.clone();
+            Box::pin(async move { p })
+        }),
+    };
+    (server::router(AppState::new(paths, db, llm), ServerOptions { desktop: Some(desktop), ..Default::default() }), tmp)
+}
+
+fn post_json(uri: &str, body: serde_json::Value) -> Request<Body> {
+    Request::builder().method("POST").uri(uri).header(header::CONTENT_TYPE, "application/json").body(Body::from(body.to_string())).unwrap()
+}
+
+/// The desktop app imports from paths (the native picker, dropped files): the webview can't
+/// always read the files itself. The source is copied and left as it was.
+#[tokio::test]
+async fn desktop_imports_a_folder_by_path_and_leaves_it_alone() {
+    let src = tempfile::tempdir().unwrap();
+    let chat = src.path().join("Kate");
+    write(
+        &chat,
+        "WhatsApp Chat with Kate.txt",
+        "21/10/2026, 18:06 - Kate: hi\n21/10/2026, 18:07 - Me: IMG-20261021-WA0001.jpg (file attached)\n",
+    );
+    write(&chat, "IMG-20261021-WA0001.jpg", "jpg");
+    let (app, tmp) = desktop_app(Some(chat.clone()));
+    let (st, v) = send(&app, post_json("/api/local/pick", json!({"kind": "folder"}))).await;
+    assert_eq!(st, StatusCode::OK, "{v}");
+    assert_eq!(v["path"], chat.display().to_string());
+    // A file of the export (dropped on its own) stands for its folder.
+    let (st, v) = send(&app, post_json("/api/local/import", json!({"paths": [chat.join("IMG-20261021-WA0001.jpg")]}))).await;
+    assert_eq!(st, StatusCode::ACCEPTED, "{v}");
+    assert_eq!(v["name"], "Kate");
+    let job = wait_for_job(&app, v["id"].as_str().unwrap()).await;
+    assert_eq!(job["state"], "done", "{job}");
+    assert_eq!(job["export"]["title"], "Kate");
+    assert!(chat.join("IMG-20261021-WA0001.jpg").exists(), "the source must stay where it was");
+    let left: Vec<_> = std::fs::read_dir(tmp.path().join("tmp")).map(|d| d.flatten().map(|e| e.path()).collect()).unwrap_or_default();
+    assert!(left.is_empty(), "{left:?}");
+    // Imported once only.
+    let (_, v) = send(&app, post_json("/api/local/import", json!({"paths": [chat]}))).await;
+    let job = wait_for_job(&app, v["id"].as_str().unwrap()).await;
+    assert_eq!(job["created"], false, "{job}");
+}
+
+#[tokio::test]
+async fn desktop_imports_a_zip_by_path() {
+    use std::io::Write;
+    let src = tempfile::tempdir().unwrap();
+    let zip_path = src.path().join("chat.zip");
+    {
+        let mut zw = zip::ZipWriter::new(std::fs::File::create(&zip_path).unwrap());
+        zw.start_file("WhatsApp Chat with Kate.txt", zip::write::SimpleFileOptions::default()).unwrap();
+        zw.write_all(b"21/10/2026, 18:06 - Kate: hi\n").unwrap();
+        zw.finish().unwrap();
+    }
+    let (app, _tmp) = desktop_app(None);
+    let (st, v) = send(&app, post_json("/api/local/import", json!({"paths": [zip_path]}))).await;
+    assert_eq!(st, StatusCode::ACCEPTED, "{v}");
+    let job = wait_for_job(&app, v["id"].as_str().unwrap()).await;
+    assert_eq!(job["export"]["title"], "Kate", "{job}");
+    assert!(zip_path.exists());
+}
+
+#[tokio::test]
+async fn desktop_rejects_paths_that_are_no_export() {
+    let src = tempfile::tempdir().unwrap();
+    write(src.path(), "a/notes.txt", "nothing here");
+    write(src.path(), "b/x.jpg", "x");
+    let (app, _tmp) = desktop_app(None);
+    for paths in [
+        json!(["relative/path"]),
+        json!([src.path().join("missing")]),
+        json!([src.path().join("a/notes.txt")]),
+        json!([src.path().join("a"), src.path().join("b")]),
+        json!([]),
+    ] {
+        let (st, v) = send(&app, post_json("/api/local/import", json!({"paths": paths}))).await;
+        assert_eq!(st, StatusCode::BAD_REQUEST, "{paths} → {v}");
+        assert!(v["error"].as_str().is_some_and(|e| !e.is_empty()), "{v}");
+    }
+    // Not a JSON request (what a cross-site form could send): refused.
+    let req = Request::builder()
+        .method("POST")
+        .uri("/api/local/import")
+        .header(header::CONTENT_TYPE, "text/plain")
+        .body(Body::from("{\"paths\":[]}"))
+        .unwrap();
+    let (st, _) = send(&app, req).await;
+    assert_eq!(st, StatusCode::UNSUPPORTED_MEDIA_TYPE);
+    // A server (no desktop app) has no such routes.
+    let (app, _tmp) = test_app();
+    let (st, _) = send(&app, post_json("/api/local/pick", json!({"kind": "folder"}))).await;
+    assert_ne!(st, StatusCode::OK);
+}

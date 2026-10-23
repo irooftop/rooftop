@@ -207,6 +207,55 @@ fn store_export(
     result
 }
 
+/// What to import for paths the user picked or dropped in the desktop app: an export
+/// folder, a `.zip` or a WhatsApp `.txt` as it is; a file inside an export (`messages.html`),
+/// or several files next to each other, stand for the folder they're in when that folder is
+/// an export.
+pub fn resolve_local(paths: &[PathBuf]) -> Result<PathBuf> {
+    let paths: Vec<&PathBuf> = paths.iter().filter(|p| !p.as_os_str().is_empty()).collect();
+    anyhow::ensure!(!paths.is_empty(), "no file or folder given");
+    for p in &paths {
+        anyhow::ensure!(p.is_absolute(), "not an absolute path: {}", p.display());
+        anyhow::ensure!(p.exists(), "“{}” doesn't exist (moved or renamed?)", p.display());
+    }
+    let is_root = |d: &Path| import::find_export_root(d).is_some_and(|r| r == d);
+    let ext = |p: &Path, x: &str| p.extension().is_some_and(|e| e.eq_ignore_ascii_case(x));
+    if let [p] = paths[..]
+        && (p.is_dir() || ext(p, "zip") || (ext(p, "txt") && import::detect_export(p).is_some()))
+    {
+        return Ok(p.clone());
+    }
+    let parent = paths[0].parent().filter(|d| paths.iter().all(|p| p.parent() == Some(d)));
+    match parent {
+        Some(d) if is_root(d) => Ok(d.to_path_buf()),
+        _ if paths.len() > 1 => anyhow::bail!("drop one export at a time: its folder, .zip or WhatsApp .txt"),
+        _ => anyhow::bail!("“{}” isn't a chat export: choose its folder, .zip or WhatsApp .txt", paths[0].display()),
+    }
+}
+
+/// Imports an export from this computer (see [`resolve_local`]) as a job. The source is
+/// copied and stays as it is; a `.zip` is unpacked into `tmp/` first.
+pub async fn run_local(st: Arc<AppState>, job: Arc<Job>, src: PathBuf, unzip_limit: u64) {
+    let work = st.paths.tmp().join(uuid::Uuid::new_v4().simple().to_string());
+    let result = async {
+        if src.is_file() && src.extension().is_some_and(|e| e.eq_ignore_ascii_case("zip")) {
+            let (zip, out, j) = (src.clone(), work.join("unzipped"), job.clone());
+            let out2 = out.clone();
+            tokio::task::spawn_blocking(move || unzip(&zip, &out2, unzip_limit, &|p| j.report(p))).await??;
+            let j = job.clone();
+            return run(&st, out, Placement::Move, Arc::new(move |p| j.report(p))).await;
+        }
+        let j = job.clone();
+        run(&st, src.clone(), Placement::Copy, Arc::new(move |p| j.report(p))).await
+    }
+    .await;
+    let _ = tokio::task::spawn_blocking(move || std::fs::remove_dir_all(work)).await;
+    if let Err(e) = &result {
+        tracing::warn!(src = %src.display(), "import failed: {e:#}");
+    }
+    job.finish(result);
+}
+
 /// Runs an upload as a job: unpacks a zip if needed, imports and removes the upload directory.
 pub async fn run_upload(st: Arc<AppState>, job: Arc<Job>, upload: PathBuf, unzip_limit: u64) {
     let result = import_upload(&st, &job, &upload, unzip_limit).await;
