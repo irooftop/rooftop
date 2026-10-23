@@ -39,6 +39,8 @@ internet relay and no Telegram bot. Nothing leaves your computer. Details: [Offl
 | 🦀 **Server**, with Rust ≥ 1.88 | `cargo install rooftop` |
 | 🐳 **Server**, Docker | `docker run -p 8080:8080 -v rooftop-data:/data ghcr.io/irooftop/rooftop` |
 
+<sub>The desktop builds aren't signed yet: [how to open them on macOS, Windows and Linux](https://irooftop.github.io/rooftop/guide/unsigned-apps).</sub>
+
 ## Quick start
 
 ```sh

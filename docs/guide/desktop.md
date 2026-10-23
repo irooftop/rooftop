@@ -12,7 +12,8 @@ The desktop app ([Tauri](https://v3.tauri.app) `3.0.0-alpha.5`) runs the same se
 The download links always point to the newest release.
 
 ::: warning The builds are not signed yet
-On macOS, right-click the app and choose **Open**. On Windows, choose **Run anyway** in SmartScreen.
+On macOS, open the app once, then **System Settings → Privacy & Security → Open Anyway**. On Windows, choose
+**More info → Run anyway** in SmartScreen. Step by step, with an animation: [Open an unsigned app](./unsigned-apps).
 :::
 
 ## First launch

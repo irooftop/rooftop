@@ -42,6 +42,7 @@ export default defineConfig({
           { text: "Offline & privacy", link: "/guide/offline" },
           { text: "Export a chat", link: "/guide/export" },
           { text: "Desktop app", link: "/guide/desktop" },
+          { text: "Open an unsigned app", link: "/guide/unsigned-apps" },
           { text: "Docker & servers", link: "/guide/docker" },
         ],
       },
