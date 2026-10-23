@@ -4,7 +4,6 @@ data
 .env.*
 .git
 .github
-.agent-logs
 .DS_Store
 ChatExport*
 tests
