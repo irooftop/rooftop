@@ -1,6 +1,9 @@
 <div align="center">
 
-# iRoof.top
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="web/logo_git_dark.svg">
+  <img src="web/logo_git.svg" alt="iRoof.top" width="200">
+</picture>
 
 **Talk to the people you miss.**<br>
 Export a Telegram or WhatsApp chat, and an LLM continues it in the style of one person:<br>
