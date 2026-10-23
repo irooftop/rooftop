@@ -1,340 +1,22 @@
-//! HTTP handlers for share links: owner management (behind the owner auth)
-//! and the public visitor API under `/s/<slug>` and `/api/s/<slug>`.
+//! The visitor's side, under `/s/<slug>` and `/api/s/<slug>`: the start page, PIN check,
+//! the conversation and its media. Every request resolves the visitor's session token.
 
+use super::{BLOCKED, GONE, GUEST_MAX_CHARS, S, not_found, too_many};
 use crate::agent;
 use crate::chat::{Chat, Event, GuestChat};
 use crate::model::{ChatExport, MediaKind, Message};
 use crate::server::{ApiError, ApiResult, ClientIp, PostMessage, PostReaction, bad, page_messages, view_messages_as};
 use crate::share::{self, GuestSession, HistoryVisibility, IP_FAILS, LINK_FAILS, Share, ShareMode};
 use crate::state::{AppState, now_string};
-use crate::store::Db;
-use anyhow::anyhow;
+use axum::Json;
 use axum::extract::{Extension, Path, Query, State};
 use axum::http::{HeaderMap, StatusCode};
 use axum::response::Response;
-use axum::routing::{get, post};
-use axum::{Json, Router};
 use serde::Deserialize;
 use serde_json::{Value, json};
 use std::collections::HashSet;
 use std::sync::Arc;
 use std::time::Duration;
-
-type S = State<Arc<AppState>>;
-
-const GONE: &str = "This link doesn't exist or is no longer active.";
-const GUEST_MAX_CHARS: usize = 4000;
-
-fn not_found(msg: &str) -> ApiError {
-    ApiError(StatusCode::NOT_FOUND, msg.into())
-}
-
-fn too_many(wait: Duration) -> ApiError {
-    let secs = wait.as_secs().max(1);
-    let human = if secs >= 120 { format!("{} min", secs.div_ceil(60)) } else { format!("{secs} s") };
-    ApiError(StatusCode::TOO_MANY_REQUESTS, format!("Too many attempts. Try again in {human}."))
-}
-
-pub fn guest_routes() -> Router<Arc<AppState>> {
-    Router::new()
-        .route("/s/{slug}", get(crate::server::guest_gate_index))
-        .route("/s/{slug}/{token}", get(crate::server::guest_chat_index))
-        .route("/api/s/{slug}", get(guest_info))
-        .route("/api/s/{slug}/avatar", get(guest_avatar))
-        .route("/api/s/{slug}/sessions", post(guest_start))
-        .route("/api/s/{slug}/c/{token}", get(guest_chat))
-        .route("/api/s/{slug}/c/{token}/messages", post(guest_message))
-        .route("/api/s/{slug}/c/{token}/react", post(guest_react))
-        .route("/api/s/{slug}/c/{token}/voice", post(guest_voice))
-        .route("/api/s/{slug}/c/{token}/respond", post(guest_respond))
-        .route("/api/s/{slug}/c/{token}/regenerate", post(guest_regenerate))
-        .route("/api/s/{slug}/c/{token}/media/{*path}", get(guest_media))
-}
-
-// ---------------------------------------------------------------- owner side
-
-pub fn share_summary(s: &Share) -> Value {
-    json!({
-        "id": s.id,
-        "chat_id": s.chat_id,
-        "slug": s.slug,
-        "display_name": s.display_name,
-        "greeting": s.greeting,
-        "has_pin": s.pin_hash.is_some(),
-        "mode": s.mode,
-        "history": s.history,
-        "history_recent": s.history_recent,
-        "enabled": s.enabled,
-        "active": s.is_active(),
-        "expires_at": s.expires_at,
-        "max_sessions": s.max_sessions,
-        "max_replies": s.max_replies,
-        "telegram_chat_id": s.telegram_chat_id,
-        "ai_delay_secs": s.ai_delay_secs,
-        "allow_nudge": s.allow_nudge,
-        "allow_regenerate": s.allow_regenerate,
-        "created_at": s.created_at,
-        "sessions": s.sessions.iter().map(|g| json!({
-            "id": g.id, "name": g.name, "chat_id": g.chat_id,
-            "created_at": g.created_at, "last_seen": g.last_seen, "replies": g.replies,
-        })).collect::<Vec<_>>(),
-    })
-}
-
-fn share_detail(s: &Share, db: &Db) -> Value {
-    let mut v = share_summary(s);
-    if let Some(list) = v["sessions"].as_array_mut() {
-        for g in list {
-            let chat = g["chat_id"].as_str().and_then(|c| db.chats.get(c));
-            let n = chat.map_or(0, |c| c.events.iter().filter(|e| matches!(e, Event::Message(_))).count());
-            g["messages"] = json!(n);
-        }
-    }
-    v
-}
-
-pub async fn list_shares(State(st): S, Path(chat_id): Path<String>) -> ApiResult {
-    let db = st.db.read().await;
-    if !db.chats.contains_key(&chat_id) {
-        return Err(anyhow!("chat not found").into());
-    }
-    let shares: Vec<Value> = db.shares.values().filter(|s| s.chat_id == chat_id).map(|s| share_detail(s, &db)).collect();
-    Ok(Json(json!({"shares": shares})))
-}
-
-#[derive(Deserialize, Default)]
-pub struct ShareInput {
-    slug: Option<String>,
-    display_name: Option<String>,
-    greeting: Option<String>,
-    /// `None` keeps the PIN, `""` removes it.
-    pin: Option<String>,
-    mode: Option<ShareMode>,
-    history: Option<HistoryVisibility>,
-    history_recent: Option<usize>,
-    enabled: Option<bool>,
-    /// `null` / `""` removes the expiry.
-    #[serde(default, deserialize_with = "double_option")]
-    expires_at: Option<Option<String>>,
-    max_sessions: Option<usize>,
-    max_replies: Option<u32>,
-    /// Telegram group for visitor messages, `null` turns the relay off.
-    #[serde(default, deserialize_with = "double_option")]
-    telegram_chat_id: Option<Option<i64>>,
-    ai_delay_secs: Option<u32>,
-    allow_nudge: Option<bool>,
-    allow_regenerate: Option<bool>,
-    /// Ends all visitor conversations (deletes them).
-    #[serde(default)]
-    revoke_sessions: bool,
-}
-
-fn double_option<'de, T: Deserialize<'de>, D: serde::Deserializer<'de>>(d: D) -> Result<Option<Option<T>>, D::Error> {
-    Ok(Some(Option::<T>::deserialize(d)?))
-}
-
-fn normalize_expiry(v: &str) -> Result<Option<String>, ApiError> {
-    let v = v.trim();
-    if v.is_empty() {
-        return Ok(None);
-    }
-    let dt = chrono::NaiveDateTime::parse_from_str(v, "%Y-%m-%dT%H:%M:%S")
-        .or_else(|_| chrono::NaiveDateTime::parse_from_str(v, "%Y-%m-%dT%H:%M"))
-        .map_err(|_| bad("expiry must be a date and time like 2026-12-31T23:59"))?;
-    Ok(Some(dt.format("%Y-%m-%dT%H:%M:%S").to_string()))
-}
-
-/// Applies `input` to `share` (validation included). Returns whether sessions must be revoked.
-async fn apply_input(st: &AppState, share: &mut Share, input: ShareInput, db: &Db) -> Result<bool, ApiError> {
-    if let Some(slug) = input.slug.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
-        let slug = share::normalize_slug(slug).map_err(|e| bad(e.to_string()))?;
-        if db.shares.values().any(|s| s.slug == slug && s.id != share.id) {
-            return Err(ApiError(StatusCode::CONFLICT, format!("the link name `{slug}` is already taken")));
-        }
-        share.slug = slug;
-    }
-    if let Some(n) = input.display_name {
-        let n = n.split_whitespace().collect::<Vec<_>>().join(" ");
-        if n.chars().count() > 64 {
-            return Err(bad("the name is longer than 64 characters"));
-        }
-        if !n.is_empty() {
-            share.display_name = n;
-        }
-    }
-    if let Some(g) = input.greeting {
-        let g = g.trim().to_string();
-        if g.chars().count() > 300 {
-            return Err(bad("the greeting is longer than 300 characters"));
-        }
-        share.greeting = g;
-    }
-    if let Some(pin) = input.pin {
-        let pin = pin.trim().to_string();
-        share.pin_numeric = !pin.is_empty() && pin.chars().all(|c| c.is_ascii_digit());
-        share.pin_hash = if pin.is_empty() {
-            None
-        } else {
-            share::validate_pin(&pin).map_err(|e| bad(e.to_string()))?;
-            Some(tokio::task::spawn_blocking(move || share::hash_pin(&pin)).await.map_err(anyhow::Error::from)??)
-        };
-    }
-    if let Some(m) = input.mode
-        && m != share.mode
-    {
-        if !share.sessions.is_empty() && !input.revoke_sessions {
-            return Err(bad("changing the mode ends the existing conversations, end them first"));
-        }
-        share.mode = m;
-    }
-    if let Some(h) = input.history {
-        share.history = h;
-    }
-    if let Some(n) = input.history_recent {
-        share.history_recent = n.clamp(1, 1000);
-    }
-    if let Some(e) = input.enabled {
-        share.enabled = e;
-    }
-    if let Some(e) = input.expires_at {
-        share.expires_at = normalize_expiry(e.as_deref().unwrap_or_default())?;
-    }
-    if let Some(n) = input.max_sessions {
-        share.max_sessions = n.min(100_000);
-    }
-    if let Some(n) = input.max_replies {
-        share.max_replies = n.min(1_000_000);
-    }
-    if let Some(tg) = input.telegram_chat_id {
-        if let Some(id) = tg
-            && share.telegram_chat_id != Some(id)
-        {
-            let bot = st.telegram.read().expect("tg bot").clone().ok_or_else(|| bad("no Telegram bot is set up (Settings → Telegram)"))?;
-            if !bot.has_group(id) {
-                return Err(bad("the bot is not a member of this Telegram group, add it to the group first"));
-            }
-        }
-        share.telegram_chat_id = tg;
-    }
-    if let Some(n) = input.ai_delay_secs {
-        share.ai_delay_secs = n.min(3600);
-    }
-    if let Some(b) = input.allow_nudge {
-        share.allow_nudge = b;
-    }
-    if let Some(b) = input.allow_regenerate {
-        share.allow_regenerate = b;
-    }
-    Ok(input.revoke_sessions)
-}
-
-pub async fn create_share(State(st): S, Path(chat_id): Path<String>, Json(input): Json<ShareInput>) -> ApiResult {
-    let mut db = st.db.write().await;
-    let chat = db.chats.get(&chat_id).ok_or_else(|| anyhow!("chat not found"))?;
-    if chat.guest.is_some() {
-        return Err(bad("a visitor conversation cannot be shared"));
-    }
-    let mut share = Share {
-        id: share::random_id(12),
-        chat_id: chat_id.clone(),
-        slug: String::new(),
-        display_name: chat.persona.clone(),
-        greeting: String::new(),
-        pin_hash: None,
-        pin_numeric: false,
-        mode: ShareMode::Private,
-        history: HistoryVisibility::None,
-        history_recent: 30,
-        enabled: true,
-        expires_at: None,
-        max_sessions: 50,
-        max_replies: 200,
-        telegram_chat_id: None,
-        ai_delay_secs: crate::tgbot::DEFAULT_AI_DELAY_SECS,
-        created_at: now_string(),
-        sessions: Vec::new(),
-        allow_nudge: false,
-        allow_regenerate: false,
-        room_chat_id: None,
-    };
-    apply_input(&st, &mut share, input, &db).await?;
-    if share.slug.is_empty() {
-        share.slug = loop {
-            let s = share::random_id(10);
-            if !db.shares.values().any(|x| x.slug == s) {
-                break s;
-            }
-        };
-    }
-    st.paths.save_share(&share)?;
-    let v = share_detail(&share, &db);
-    db.shares.insert(share.id.clone(), share);
-    Ok(Json(v))
-}
-
-pub async fn update_share(State(st): S, Path(id): Path<String>, Json(input): Json<ShareInput>) -> ApiResult {
-    let mut db = st.db.write().await;
-    let mut share = db.shares.get(&id).cloned().ok_or_else(|| anyhow!("share not found"))?;
-    if apply_input(&st, &mut share, input, &db).await? {
-        revoke_all(&st, &mut db, &mut share)?;
-    }
-    st.paths.save_share(&share)?;
-    let v = share_detail(&share, &db);
-    db.shares.insert(id, share);
-    Ok(Json(v))
-}
-
-/// Deletes all visitor conversations of a share.
-fn revoke_all(st: &AppState, db: &mut Db, share: &mut Share) -> anyhow::Result<()> {
-    let chats: Vec<String> =
-        db.chats.values().filter(|c| c.guest.as_ref().is_some_and(|g| g.share_id == share.id)).map(|c| c.id.clone()).collect();
-    for c in chats {
-        db.chats.remove(&c);
-        st.paths.delete_chat(&c)?;
-    }
-    share.sessions.clear();
-    share.room_chat_id = None;
-    Ok(())
-}
-
-/// Removes a share with its visitor conversations.
-pub fn remove_share(st: &AppState, db: &mut Db, id: &str) -> anyhow::Result<()> {
-    if let Some(mut share) = db.shares.remove(id) {
-        revoke_all(st, db, &mut share)?;
-        st.paths.delete_share(id)?;
-    }
-    Ok(())
-}
-
-pub async fn delete_share(State(st): S, Path(id): Path<String>) -> ApiResult {
-    let mut db = st.db.write().await;
-    if !db.shares.contains_key(&id) {
-        return Err(anyhow!("share not found").into());
-    }
-    remove_share(&st, &mut db, &id)?;
-    Ok(Json(json!({"ok": true})))
-}
-
-/// Ends one visitor session. Its conversation is deleted unless other room members still use it.
-pub async fn delete_session(State(st): S, Path((id, session)): Path<(String, String)>) -> ApiResult {
-    let mut db = st.db.write().await;
-    let mut share = db.shares.get(&id).cloned().ok_or_else(|| anyhow!("share not found"))?;
-    let pos = share.sessions.iter().position(|s| s.id == session).ok_or_else(|| anyhow!("session not found"))?;
-    let removed = share.sessions.remove(pos);
-    if !share.sessions.iter().any(|s| s.chat_id == removed.chat_id) {
-        db.chats.remove(&removed.chat_id);
-        st.paths.delete_chat(&removed.chat_id)?;
-        if share.room_chat_id.as_deref() == Some(removed.chat_id.as_str()) {
-            share.room_chat_id = None;
-        }
-    }
-    st.paths.save_share(&share)?;
-    let v = share_detail(&share, &db);
-    db.shares.insert(id, share);
-    Ok(Json(v))
-}
-
-// ---------------------------------------------------------------- visitor side
 
 async fn active_share(st: &AppState, slug: &str) -> Result<Share, ApiError> {
     let slug = slug.to_lowercase();
@@ -346,6 +28,9 @@ async fn resolve(st: &AppState, slug: &str, token: &str, ip: &str) -> Result<(Sh
     let key = format!("token:{ip}");
     st.limiter.lock().expect("limiter").check_locked(&key).map_err(too_many)?;
     let share = active_share(st, slug).await?;
+    if share.is_blocked(ip) {
+        return Err(ApiError(StatusCode::FORBIDDEN, BLOCKED.into()));
+    }
     match share.session_by_token(token).cloned() {
         Some(s) => Ok((share, s)),
         None => {
@@ -359,8 +44,11 @@ fn persona_avatar(export: &ChatExport, persona: &str) -> Option<String> {
     export.participants.iter().find(|p| p.name == persona).and_then(|p| p.avatar.clone())
 }
 
-async fn guest_info(State(st): S, Path(slug): Path<String>) -> ApiResult {
+pub(super) async fn guest_info(State(st): S, Path(slug): Path<String>, Extension(ClientIp(ip)): Extension<ClientIp>) -> ApiResult {
     let share = active_share(&st, &slug).await?;
+    if share.is_blocked(&ip) {
+        return Err(ApiError(StatusCode::FORBIDDEN, BLOCKED.into()));
+    }
     let db = st.db.read().await;
     let chat = db.chats.get(&share.chat_id).ok_or_else(|| not_found(GONE))?;
     let has_avatar = db.exports.get(&chat.export_id).and_then(|r| persona_avatar(&r.export, &chat.persona)).is_some();
@@ -378,7 +66,7 @@ async fn guest_info(State(st): S, Path(slug): Path<String>) -> ApiResult {
     })))
 }
 
-async fn guest_avatar(State(st): S, Path(slug): Path<String>, headers: HeaderMap) -> Result<Response, ApiError> {
+pub(super) async fn guest_avatar(State(st): S, Path(slug): Path<String>, headers: HeaderMap) -> Result<Response, ApiError> {
     let share = active_share(&st, &slug).await?;
     if share.pin_hash.is_some() {
         return Err(not_found("not found"));
@@ -389,12 +77,12 @@ async fn guest_avatar(State(st): S, Path(slug): Path<String>, headers: HeaderMap
 }
 
 #[derive(Deserialize, Default)]
-struct StartReq {
+pub(super) struct StartReq {
     pin: Option<String>,
     name: Option<String>,
 }
 
-async fn guest_start(
+pub(super) async fn guest_start(
     State(st): S,
     Path(slug): Path<String>,
     Extension(ClientIp(ip)): Extension<ClientIp>,
@@ -402,6 +90,9 @@ async fn guest_start(
 ) -> ApiResult {
     let req = body.map(|Json(b)| b).unwrap_or_default();
     let share = active_share(&st, &slug).await?;
+    if share.is_blocked(&ip) {
+        return Err(ApiError(StatusCode::FORBIDDEN, BLOCKED.into()));
+    }
     if let Some(hash) = share.pin_hash.clone() {
         let ip_key = format!("pin:{}:{ip}", share.id);
         let link_key = format!("pin:{}", share.id);
@@ -456,7 +147,7 @@ async fn guest_start(
             id
         }
     };
-    let session = share::new_session(&chat_id, name);
+    let session = share::new_session(&chat_id, name, &ip);
     let token = session.token.clone();
     share.sessions.push(session);
     st.paths.save_share(&share)?;
@@ -562,12 +253,12 @@ fn guest_view(export: &ChatExport, chat: &Chat, share: &Share, session: &GuestSe
 }
 
 #[derive(Deserialize)]
-struct LimitQuery {
+pub(super) struct LimitQuery {
     limit: Option<usize>,
     before: Option<i64>,
 }
 
-async fn guest_chat(
+pub(super) async fn guest_chat(
     State(st): S,
     Path((slug, token)): Path<(String, String)>,
     Extension(ClientIp(ip)): Extension<ClientIp>,
@@ -638,11 +329,15 @@ fn rate(st: &AppState, key: String, max: u32, window: Duration) -> Result<(), Ap
 }
 
 /// Updates `last_seen` (and the reply counter) of a session.
-async fn touch(st: &AppState, share_id: &str, session_id: &str, add_reply: bool) -> Result<(), ApiError> {
+/// Marks a visitor as active now (from `ip`), counting an answer when `add_reply`.
+async fn touch(st: &AppState, share_id: &str, session_id: &str, ip: &str, add_reply: bool) -> Result<(), ApiError> {
     let mut db = st.db.write().await;
     let share = db.shares.get_mut(share_id).ok_or_else(|| not_found(GONE))?;
     if let Some(s) = share.sessions.iter_mut().find(|s| s.id == session_id) {
         s.last_seen = now_string();
+        if let Some(ip) = share::known_ip(ip) {
+            s.ip = Some(ip);
+        }
         if add_reply {
             s.replies += 1;
         }
@@ -651,7 +346,7 @@ async fn touch(st: &AppState, share_id: &str, session_id: &str, add_reply: bool)
     Ok(())
 }
 
-async fn guest_message(
+pub(super) async fn guest_message(
     State(st): S,
     Path((slug, token)): Path<(String, String)>,
     Extension(ClientIp(ip)): Extension<ClientIp>,
@@ -662,7 +357,7 @@ async fn guest_message(
     let name = share.visitor_name(&session);
     let author = (share.mode == ShareMode::Room).then_some((session.id.as_str(), name.as_str()));
     let id = crate::server::add_message(&st, &session.chat_id, req, GUEST_MAX_CHARS, author).await?;
-    touch(&st, &share.id, &session.id, false).await?;
+    touch(&st, &share.id, &session.id, &ip, false).await?;
     crate::tgbot::relay_guest_message(&st, &share, &session, id).await;
     let (rec, chat) = st.snapshot(&session.chat_id).await?;
     let mine: Vec<&Message> = guest_visible(&rec.export, &chat, &share).into_iter().filter(|m| m.id == id).collect();
@@ -670,7 +365,7 @@ async fn guest_message(
     Ok(Json(json!({"messages": view})))
 }
 
-async fn guest_voice(
+pub(super) async fn guest_voice(
     State(st): S,
     Path((slug, token)): Path<(String, String)>,
     Extension(ClientIp(ip)): Extension<ClientIp>,
@@ -682,7 +377,7 @@ async fn guest_voice(
     let name = share.visitor_name(&session);
     let author = (share.mode == ShareMode::Room).then_some((session.id.as_str(), name.as_str()));
     let id = crate::server::add_voice(&st, &session.chat_id, mp, 5 * 1024 * 1024, author).await?;
-    touch(&st, &share.id, &session.id, false).await?;
+    touch(&st, &share.id, &session.id, &ip, false).await?;
     crate::tgbot::relay_guest_message(&st, &share, &session, id).await;
     let (rec, chat) = st.snapshot(&session.chat_id).await?;
     let mine: Vec<&Message> = guest_visible(&rec.export, &chat, &share).into_iter().filter(|m| m.id == id).collect();
@@ -690,7 +385,7 @@ async fn guest_voice(
     Ok(Json(json!({"messages": view})))
 }
 
-async fn guest_react(
+pub(super) async fn guest_react(
     State(st): S,
     Path((slug, token)): Path<(String, String)>,
     Extension(ClientIp(ip)): Extension<ClientIp>,
@@ -719,15 +414,11 @@ async fn guest_turn(st: Arc<AppState>, slug: String, token: String, ip: String, 
     if regenerate && !share.allow_regenerate {
         return Err(ApiError(StatusCode::FORBIDDEN, "Answers can't be rewritten on this link.".into()));
     }
-    // An answer needs something to answer: a visitor's message after the persona's last one.
-    // Without one this is "write first", which the owner may not allow.
+    // An answer needs something to answer: a visitor's message or reaction after the
+    // persona's last message. Without one this is "write first", which the owner may not allow.
     if !regenerate && !share.allow_nudge {
         let (_, chat) = st.snapshot(&session.chat_id).await.map_err(|_| not_found(GONE))?;
-        let last = chat.events.iter().rev().find_map(|e| match e {
-            Event::Message(m) if !m.service => Some(m.from == chat.persona),
-            _ => None,
-        });
-        if last.unwrap_or(true) {
+        if !awaits_answer(&chat) {
             return Err(ApiError(
                 StatusCode::FORBIDDEN,
                 format!("{} answers your messages here: write something first.", share.display_name),
@@ -736,7 +427,7 @@ async fn guest_turn(st: Arc<AppState>, slug: String, token: String, ip: String, 
     }
     rate(&st, format!("turn:{}", session.id), 10, Duration::from_secs(60))?;
     rate(&st, format!("turn-link:{}", share.id), 120, Duration::from_secs(60))?;
-    touch(&st, &share.id, &session.id, true).await?;
+    touch(&st, &share.id, &session.id, &ip, true).await?;
     if regenerate {
         crate::server::drop_last_persona_turn(&st, &session.chat_id).await?;
     }
@@ -754,7 +445,21 @@ async fn guest_turn(st: Arc<AppState>, slug: String, token: String, ip: String, 
     crate::server::turn_view(&st, &chat_id, outcome, move |e, c, m| guest_view(e, c, &share, &session, m)).await
 }
 
-async fn guest_respond(
+/// Whether the visitor did something the persona can answer since its last message: wrote,
+/// or reacted (a ❤ on its message may get a reply, as in a real chat).
+fn awaits_answer(chat: &Chat) -> bool {
+    chat.events
+        .iter()
+        .rev()
+        .find_map(|e| match e {
+            Event::Message(m) if !m.service => Some(m.from != chat.persona),
+            Event::Reaction { from, removed: false, .. } if *from != chat.persona => Some(true),
+            _ => None,
+        })
+        .unwrap_or(false)
+}
+
+pub(super) async fn guest_respond(
     State(st): S,
     Path((slug, token)): Path<(String, String)>,
     Extension(ClientIp(ip)): Extension<ClientIp>,
@@ -762,7 +467,7 @@ async fn guest_respond(
     guest_turn(st, slug, token, ip, false).await
 }
 
-async fn guest_regenerate(
+pub(super) async fn guest_regenerate(
     State(st): S,
     Path((slug, token)): Path<(String, String)>,
     Extension(ClientIp(ip)): Extension<ClientIp>,
@@ -795,7 +500,7 @@ fn guest_media_allowed(export: &ChatExport, chat: &Chat, share: &Share, path: &s
     false
 }
 
-async fn guest_media(
+pub(super) async fn guest_media(
     State(st): S,
     Path((slug, token, path)): Path<(String, String, String)>,
     Extension(ClientIp(ip)): Extension<ClientIp>,

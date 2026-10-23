@@ -18,7 +18,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 T = 26.0  # loop length, seconds
 
-# The app's dark theme (web/app.css) and avatar colors (web/app.js).
+# The app's dark theme (web/app.css) and avatar colors (web/js/02-utils.js).
 BG, BG2, PANEL, CHAT = "#0f1419", "#17202a", "#182533", "#0e1621"
 TEXT, MUTED, BORDER, ACCENT = "#e8eaed", "#8b98a5", "#22313f", "#3390ec"
 OUT, OUT_META, LINK, OK = "#2b5278", "#9fc4ea", "#6ab3f3", "#4cc26b"

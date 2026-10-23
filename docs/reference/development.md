@@ -7,7 +7,7 @@ cargo fmt --check && cargo clippy --all-targets -- -D warnings && cargo test
 | Tests cover | |
 |---|---|
 | Parser and conversion | against `examples/telegram` and `examples/whatsapp` |
-| Share links | visitor isolation, PIN lockout, media allow-list, rooms, auth bypass |
+| Share links | visitor isolation, PIN lockout, media allow-list, rooms, names, blocking, auth bypass |
 | MCP client | mock servers of every protocol era (HTTP, legacy SSE, stdio) |
 | Relay | hub, names, forwarding |
 
@@ -17,7 +17,11 @@ The desktop crate is separate: `cd desktop && cargo check`.
 
 ```
 src/        server (axum), parsers, LLM agent, MCP client, share links, relay, Telegram
-web/        the UI: index.html, app.js, app.css, embedded into the binary
+  server/     the owner's HTTP API, one file per area: assets, uploads, exports, chats,
+              messages, settings, media; mod.rs builds the routers
+  share_api/  share links: owner.rs (managing links and visitors), visitor.rs (/s/…)
+web/        the UI: index.html, app.css and js/ (served as one app.js), embedded into the binary
+  js/         one file per area of the UI, numbered in load order (one script, one scope)
 desktop/    Tauri app around the same server
 docs/       this site (VitePress)
 deploy/     Caddy + Docker Compose

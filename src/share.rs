@@ -54,6 +54,19 @@ pub struct GuestSession {
     /// Persona answers requested by this session.
     #[serde(default)]
     pub replies: u32,
+    /// The address the visitor last came from (shown to the owner, used to block them).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ip: Option<String>,
+}
+
+/// An address the owner blocked from a link.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct Blocked {
+    pub ip: String,
+    /// The visitor's name when they were blocked, to recognise the entry.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+    pub at: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -101,6 +114,9 @@ pub struct Share {
     /// With a Telegram group: seconds before the AI answers on its own, 0 = only on request.
     #[serde(default = "default_ai_delay")]
     pub ai_delay_secs: u32,
+    /// Addresses that may not open this link.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub blocked: Vec<Blocked>,
     /// Visitors may ask the persona to write first, without a message of their own.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub allow_nudge: bool,
@@ -237,7 +253,19 @@ pub fn distinct_name(name: String, people: &[&str], visitors: &[&str]) -> String
     (2..).map(|i| format!("{base} {i}")).find(|n| !clash(n)).expect("a free name")
 }
 
-pub fn new_session(chat_id: &str, name: Option<String>) -> GuestSession {
+impl Share {
+    pub fn is_blocked(&self, ip: &str) -> bool {
+        self.blocked.iter().any(|b| b.ip == ip)
+    }
+}
+
+/// `ip` when it is a real address (the server may not know it: "unknown"), so that one
+/// block never covers every visitor whose address is missing.
+pub fn known_ip(ip: &str) -> Option<String> {
+    ip.parse::<std::net::IpAddr>().ok().map(|a| a.to_string())
+}
+
+pub fn new_session(chat_id: &str, name: Option<String>, ip: &str) -> GuestSession {
     let now = now_string();
     GuestSession {
         id: random_id(8),
@@ -247,6 +275,7 @@ pub fn new_session(chat_id: &str, name: Option<String>) -> GuestSession {
         created_at: now.clone(),
         last_seen: now,
         replies: 0,
+        ip: known_ip(ip),
     }
 }
 

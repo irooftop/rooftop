@@ -24,7 +24,10 @@ descriptions, prompt, token usage or other chats.
 | Expires / active | never / on | pause or expire a link without deleting it |
 | Telegram group | off | [answer from Telegram](./telegram) |
 
-You can **Read** every visitor conversation in the Share dialog, and **End** one to revoke it.
+You can **Read** every visitor conversation in the Share dialog, and **End** one to revoke it. Each visitor shows
+the address they last wrote from; when ending a conversation, **Also block** keeps that address out of the link
+(the start page, new conversations and ones already open) until you **Unblock** it. On a shared network one
+address may be several people. Addresses are stored with the link on your computer only.
 
 ## Who the persona talks to
 

@@ -401,3 +401,79 @@ async fn room_visitors_keep_their_names() {
     assert!(prompt.contains(" Ann ") && prompt.contains(" Ann 2 "), "each line names its sender: {prompt}");
     assert!(prompt.contains("Ann 2 reacted 👍") || prompt.contains("Ann reacted 👍"), "{prompt}");
 }
+
+/// Like `call`, from the client address `ip`.
+async fn call_from(app: &Router, ip: &str, method: &str, uri: &str, body: Option<Value>) -> (StatusCode, Value) {
+    let mut b = Request::builder().method(method).uri(uri);
+    if body.is_some() {
+        b = b.header(header::CONTENT_TYPE, "application/json");
+    }
+    let mut req = b.body(body.map_or_else(Body::empty, |v| Body::from(v.to_string()))).unwrap();
+    let addr = std::net::SocketAddr::new(ip.parse().unwrap(), 50000);
+    req.extensions_mut().insert(axum::extract::ConnectInfo(addr));
+    let resp = app.clone().oneshot(req).await.unwrap();
+    let status = resp.status();
+    let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    (status, serde_json::from_slice(&bytes).unwrap_or(Value::Null))
+}
+
+/// A visitor's ❤ on the persona's message is something to answer, even where "write
+/// first" is off; nothing at all is not.
+#[tokio::test]
+async fn a_reaction_may_get_an_answer() {
+    let Some(env) = setup(None).await else { return };
+    create_share(&env, json!({"slug": "heart", "display_name": "Jonas", "history": "full"})).await;
+    let (_, s) = start(&env, "heart", json!({"name": "Mia"})).await;
+    let t = s["token"].as_str().unwrap().to_string();
+    let respond_uri = format!("/api/s/heart/c/{t}/respond");
+    let respond = || call(&env.app, "POST", &respond_uri, None, None);
+    assert_eq!(respond().await.0, StatusCode::FORBIDDEN, "nothing to answer yet");
+    let (_, chat, _) = call(&env.app, "GET", &format!("/api/s/heart/c/{t}"), None, None).await;
+    let persona_msg = chat["messages"].as_array().unwrap().iter().rev().find(|m| m["from"] == "Jonas").unwrap()["id"].as_i64().unwrap();
+    let (st, _, text) =
+        call(&env.app, "POST", &format!("/api/s/heart/c/{t}/react"), Some(json!({"message_id": persona_msg, "emoji": "❤️"})), None).await;
+    assert_eq!(st, StatusCode::OK, "{text}");
+    assert_ne!(respond().await.0, StatusCode::FORBIDDEN, "a reaction may be answered");
+}
+
+/// The owner sees where visitors write from, and can end a conversation and block that
+/// address: it can't open the link, start or continue a conversation, until unblocked.
+#[tokio::test]
+async fn visitors_can_be_blocked_by_address() {
+    let Some(env) = setup(None).await else { return };
+    let share = create_share(&env, json!({"slug": "door", "display_name": "Jonas"})).await;
+    let sid = share["id"].as_str().unwrap().to_string();
+    let (bad_ip, good_ip) = ("203.0.113.7", "198.51.100.2");
+    let (st, s) = call_from(&env.app, bad_ip, "POST", "/api/s/door/sessions", Some(json!({"name": "Bob"}))).await;
+    assert_eq!(st, StatusCode::OK, "{s}");
+    let (_, s2) = call_from(&env.app, bad_ip, "POST", "/api/s/door/sessions", Some(json!({"name": "Bob again"}))).await;
+    let (_, keep) = call_from(&env.app, good_ip, "POST", "/api/s/door/sessions", Some(json!({"name": "Ann"}))).await;
+    let (_, list, _) = call(&env.app, "GET", &format!("/api/chats/{}/shares", env.chat_id), None, None).await;
+    let sessions = list["shares"][0]["sessions"].as_array().unwrap().clone();
+    let bob = sessions.iter().find(|g| g["name"] == "Bob").unwrap();
+    assert_eq!(bob["ip"], bad_ip);
+
+    let (st, v, text) =
+        call(&env.app, "DELETE", &format!("/api/shares/{sid}/sessions/{}?block=true", bob["id"].as_str().unwrap()), None, None).await;
+    assert_eq!(st, StatusCode::OK, "{text}");
+    assert_eq!(v["blocked"][0]["ip"], bad_ip);
+    let names: Vec<&str> = v["sessions"].as_array().unwrap().iter().filter_map(|g| g["name"].as_str()).collect();
+    assert_eq!(names, ["Ann"], "everyone from the blocked address is gone");
+
+    for (method, uri) in [("GET", "/api/s/door".to_string()), ("POST", "/api/s/door/sessions".to_string())] {
+        let (st, v) = call_from(&env.app, bad_ip, method, &uri, (method == "POST").then(|| json!({}))).await;
+        assert_eq!(st, StatusCode::FORBIDDEN, "{method} {uri}: {v}");
+    }
+    let t2 = s2["token"].as_str().unwrap();
+    let (st, _) = call_from(&env.app, bad_ip, "GET", &format!("/api/s/door/c/{t2}"), None).await;
+    assert_ne!(st, StatusCode::OK, "the blocked address can't continue either");
+    let (st, _) = call_from(&env.app, good_ip, "GET", &format!("/api/s/door/c/{}", keep["token"].as_str().unwrap()), None).await;
+    assert_eq!(st, StatusCode::OK, "others carry on");
+
+    let (st, v, text) = call(&env.app, "PATCH", &format!("/api/shares/{sid}"), Some(json!({"unblock": [bad_ip]})), None).await;
+    assert_eq!(st, StatusCode::OK, "{text}");
+    assert!(v["blocked"].as_array().unwrap().is_empty(), "{v}");
+    let (st, _) = call_from(&env.app, bad_ip, "POST", "/api/s/door/sessions", Some(json!({}))).await;
+    assert_eq!(st, StatusCode::OK);
+    assert!(s["token"].is_string());
+}

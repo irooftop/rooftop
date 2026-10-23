@@ -31,7 +31,7 @@ fn start_server(data_dir: std::path::PathBuf) -> Result<SocketAddr> {
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.context("binding 127.0.0.1:0")?;
         let addr = listener.local_addr()?;
         tauri::async_runtime::spawn(async move {
-            if let Err(e) = axum::serve(listener, app).await {
+            if let Err(e) = axum::serve(listener, app.into_make_service_with_connect_info::<SocketAddr>()).await {
                 eprintln!("server error: {e}");
             }
         });

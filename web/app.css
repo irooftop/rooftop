@@ -549,6 +549,11 @@ body.lb-open { overflow: hidden; }
 .share-empty b { color: var(--text); font-size: 16px; margin-top: 6px; }
 .se-badge { width: 64px; height: 64px; border-radius: 50%; display: grid; place-items: center; color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, transparent); }
 .se-badge .i { width: 30px; height: 30px; stroke-width: 1.6; }
+.se-badge.sm { width: 32px; height: 32px; flex: none; color: var(--muted); background: var(--bg-2); }
+.se-badge.sm .i { width: 16px; height: 16px; }
+.session-row .ip { font-size: 12px; }
+.cf-check { text-align: left; align-items: flex-start; line-height: 1.4; }
+.cf-check input { margin-top: 2px; }
 .share-card { border: 1px solid var(--border); border-radius: 14px; padding: 12px; display: grid; gap: 8px; background: var(--bg); min-width: 0; }
 .share-card.inactive { opacity: .7; }
 .share-top { display: flex; gap: 10px; align-items: center; min-width: 0; }
