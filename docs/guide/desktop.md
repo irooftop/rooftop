@@ -42,4 +42,6 @@ npm run build -- --debug --no-bundle   # just the binary
 ```
 
 On macOS, `npm run build` also makes the `.dmg`, and skips the Finder AppleScript that only arranges the DMG window
-(it fails without the *Automation* permission). Set `ROOFTOP_DMG_FINDER=1` to keep the Finder layout.
+(it fails without the *Automation* permission). Set `ROOFTOP_DMG_FINDER=1` to keep the Finder layout, as the
+released DMGs have: the background from `desktop/dmg/` with an arrow from the app to *Applications*, and the volume's
+hidden files moved out of view. After editing `desktop/dmg/background.svg`, run `desktop/dmg/make-background.sh`.

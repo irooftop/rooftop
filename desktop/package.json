@@ -1,7 +1,7 @@
 {
   "name": "rooftop-desktop",
   "private": true,
-  "version": "0.5.7",
+  "version": "0.5.8",
   "scripts": {
     "tauri": "tauri",
     "build": "node build.mjs",

@@ -137,10 +137,24 @@ jobs:
         run: |
           args=(--config '${{ steps.ver.outputs.config }}')
           if [[ -n "${{ matrix.target }}" ]]; then args+=(--target "${{ matrix.target }}"); fi
-          # tauri.macos.conf.json defaults local builds to the .app only, but releases also ship the DMG
-          # (CI=true makes the bundler skip the Finder AppleScript).
-          if [[ "$RUNNER_OS" == "macOS" ]]; then args+=(--bundles app,dmg); fi
-          npx tauri build "${args[@]}"
+          # tauri.macos.conf.json defaults local builds to the .app only, but releases also ship the DMG.
+          # CI=true would make the bundler skip the Finder AppleScript that lays out the DMG window
+          # (background with the "drag to Applications" arrow, icon positions, hidden files out of
+          # view), so it is forced on: GitHub's macOS runners have a GUI session and Automation access.
+          if [[ "$RUNNER_OS" != "macOS" ]]; then npx tauri build "${args[@]}"; exit; fi
+          args+=(--bundles app,dmg)
+          # Finder occasionally times out on a fresh runner: retry once, then ship the plain DMG.
+          TAURI_BUNDLER_DMG_IGNORE_CI=true npx tauri build "${args[@]}" \
+            || TAURI_BUNDLER_DMG_IGNORE_CI=true npx tauri build "${args[@]}" \
+            || { echo "::warning::Finder layout of the DMG failed, shipping it without"; npx tauri build "${args[@]}"; }
+          for dmg in target/*/release/bundle/dmg/*.dmg target/release/bundle/dmg/*.dmg; do
+            [[ -f "$dmg" ]] || continue
+            mnt=$(mktemp -d)
+            hdiutil attach -nobrowse -readonly -mountpoint "$mnt" "$dmg" >/dev/null
+            if [[ -f "$mnt/.DS_Store" && -d "$mnt/.background" ]]; then echo "$dmg: Finder layout present"
+            else echo "::warning::$dmg has no Finder layout (.DS_Store/.background)"; fi
+            hdiutil detach "$mnt" >/dev/null
+          done
 
       - name: Collect installers
         run: |

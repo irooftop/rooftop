@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="660" height="400" viewBox="0 0 660 400">
+  <!-- Background of the macOS DMG window (660x400 points, see bundle.macOS.dmg in ../tauri.conf.json).
+       Finder centres icons on appPosition (180,170) and applicationFolderPosition (480,170).
+       Regenerate background.tiff after editing: ./make-background.sh -->
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="1" stop-color="#eef1f5"/>
+    </linearGradient>
+  </defs>
+  <rect width="660" height="400" fill="url(#bg)"/>
+  <!-- arrow from the app to Applications -->
+  <g fill="none" stroke="#3390ec" stroke-width="6" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M272 170 H382" stroke-dasharray="0 16"/>
+    <path d="M368 152 L388 170 L368 188"/>
+  </g>
+  <text x="330" y="338" text-anchor="middle" font-family="SF Pro Text, Helvetica Neue, Helvetica, Arial, sans-serif"
+        font-size="15" font-weight="500" fill="#4a5056">Drag iRoof.top to Applications to install it</text>
+</svg>
