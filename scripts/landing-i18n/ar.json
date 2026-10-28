@@ -1,0 +1,40 @@
+{
+  "texts": {
+    "iRoof.top: talk to the people you miss": "iRoof.top: تحدّث مع الأشخاص الذين تشتاق إليهم",
+    "Export a Telegram or WhatsApp chat, and an LLM continues it in the style of the person you miss. Open source, runs on your computer, offline if you like.": "صدّر محادثة من تيليغرام أو واتساب، ويكملها الذكاء الاصطناعي بأسلوب الشخص الذي تشتاق إليه. مفتوحة المصدر، تعمل على حاسوبك، وتعمل دون اتصال إن شئت.",
+    "Talk to the people you miss: an LLM continues your Telegram or WhatsApp chat in their style.": "تحدّث مع الأشخاص الذين تشتاق إليهم: يكمل الذكاء الاصطناعي محادثتك على تيليغرام أو واتساب بأسلوبهم.",
+    "Talk to the people you miss.": "تحدّث مع الأشخاص الذين تشتاق إليهم.",
+    "Export a Telegram or WhatsApp chat, and an AI continues it in their style. On your computer, offline if you like.": "صدّر محادثة من تيليغرام أو واتساب، ويكملها الذكاء الاصطناعي بأسلوبهم. على حاسوبك، ويعمل دون اتصال إن شئت.",
+    "Download": "تنزيل",
+    "Docs": "التوثيق",
+    "What it looks like": "كيف يبدو",
+    "Someone sits on a sloped roof by the chimney, hugging their knees and looking up at the moon and the stars": "شخص جالس على سطح مائل بجوار المدخنة، يحتضن ركبتيه وينظر إلى القمر والنجوم",
+    "A chat continues in the style of a real person, then a friend opens the shared link on a phone": "تستمر المحادثة بأسلوب شخص حقيقي، ثم يفتح صديق الرابط المشترك على الهاتف",
+    "Apple Silicon · .dmg": "Apple Silicon · .dmg",
+    "Intel .dmg": "Intel .dmg",
+    "10 and 11 · .exe": "10 و11 · .exe",
+    ".msi package": "حزمة .msi",
+    "AppImage · x86-64": "AppImage · x86-64",
+    "Ubuntu .deb": "Ubuntu .deb",
+    "Fedora .rpm": "Fedora .rpm",
+    "As a server": "كخادم",
+    "all options": "كل الخيارات",
+    "Click to select, then copy": "انقر للتحديد، ثم انسخ",
+    "The apps aren't signed yet. On a Mac, open the app once, then": "التطبيقات غير موقّعة بعد. على جهاز Mac، افتح التطبيق مرة واحدة، ثم",
+    "System Settings → Privacy &amp; Security → Open Anyway": "إعدادات النظام → الخصوصية والأمان → فتح على أي حال",
+    "On Windows,": "على Windows،",
+    "More info → Run anyway": "مزيد من المعلومات → تشغيل على أي حال",
+    "Step by step": "خطوة بخطوة",
+    "Documentation": "التوثيق",
+    "Privacy": "الخصوصية",
+    "MIT": "MIT"
+  },
+  "faq": [
+    ["ما هو iRoof.top؟", "تحدّث مع الأشخاص الذين تشتاق إليهم. صدّر محادثة من تيليغرام أو واتساب، ويكملها الذكاء الاصطناعي بأسلوب شخص واحد: كلماته وفقاعاته وملصقاته وصوره المتحركة وتفاعلاته وصوته. مفتوح المصدر بموجب ترخيص MIT."],
+    ["كيف أصدّر المحادثة؟", "في Telegram Desktop، افتح المحادثة واختر ⋯ ثم Export Chat History. في واتساب، افتح المحادثة واختر Export chat مع تضمين الوسائط. أفلت المجلد أو ملف .zip أو .txt على صفحة iRoof.top."],
+    ["هل تغادر محادثتي حاسوبي؟", "الاستيراد لا يستخدم الشبكة أبداً. مع نموذج محلي (Ollama أو LM Studio أو llama.cpp) وتفعيل وضع عدم الاتصال، لا يغادر أي شيء حاسوبك."],
+    ["أي ذكاء اصطناعي تستخدم؟", "أي خدمة متوافقة مع OpenAI: OpenAI أو OpenRouter، أو نموذج على حاسوبك أو خادمك، مثل Ollama أو LM Studio أو vLLM. البرنامج مجاني، والنموذج السحابي تحاسبك عليه جهة تقديمه."],
+    ["هل يستطيع شخص آخر التحدث في المحادثة؟", "نعم. يتيح رابط المشاركة (iroof.top/s/الاسم) لشخص آخر متابعة المحادثة، مع رقم PIN وحدود تحددها أنت. يعمل على شبكة Wi-Fi الخاصة بك أو على العنوان name.iroof.top، ويمكن أن يعرض رمز QR."]
+  ],
+  "ui": {"faq": "أسئلة", "language": "اللغة"}
+}

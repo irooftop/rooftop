@@ -1,0 +1,40 @@
+{
+  "texts": {
+    "iRoof.top: talk to the people you miss": "iRoof.top: bicaralah dengan orang yang kamu rindukan",
+    "Export a Telegram or WhatsApp chat, and an LLM continues it in the style of the person you miss. Open source, runs on your computer, offline if you like.": "Ekspor chat Telegram atau WhatsApp, dan AI akan melanjutkannya dengan gaya orang yang kamu rindukan. Open source, berjalan di komputermu, dan bisa offline jika kamu mau.",
+    "Talk to the people you miss: an LLM continues your Telegram or WhatsApp chat in their style.": "Bicaralah dengan orang yang kamu rindukan: AI melanjutkan chat Telegram atau WhatsApp-mu dengan gaya mereka.",
+    "Talk to the people you miss.": "Bicaralah dengan orang yang kamu rindukan.",
+    "Export a Telegram or WhatsApp chat, and an AI continues it in their style. On your computer, offline if you like.": "Ekspor chat Telegram atau WhatsApp, dan AI akan melanjutkannya dengan gaya mereka. Di komputermu, dan bisa offline jika kamu mau.",
+    "Download": "Unduh",
+    "Docs": "Dokumen",
+    "What it looks like": "Tampilannya",
+    "Someone sits on a sloped roof by the chimney, hugging their knees and looking up at the moon and the stars": "Seseorang duduk di atap miring dekat cerobong asap, memeluk lutut dan menatap bulan serta bintang",
+    "A chat continues in the style of a real person, then a friend opens the shared link on a phone": "Chat berlanjut dengan gaya orang sungguhan, lalu seorang teman membuka tautan yang dibagikan di ponselnya",
+    "Apple Silicon · .dmg": "Apple Silicon · .dmg",
+    "Intel .dmg": "Intel .dmg",
+    "10 and 11 · .exe": "10 dan 11 · .exe",
+    ".msi package": "Paket .msi",
+    "AppImage · x86-64": "AppImage · x86-64",
+    "Ubuntu .deb": "Ubuntu .deb",
+    "Fedora .rpm": "Fedora .rpm",
+    "As a server": "Sebagai server",
+    "all options": "semua opsi",
+    "Click to select, then copy": "Klik untuk memilih, lalu salin",
+    "The apps aren't signed yet. On a Mac, open the app once, then": "Aplikasinya belum ditandatangani. Di Mac, buka aplikasi sekali, lalu",
+    "System Settings → Privacy &amp; Security → Open Anyway": "Pengaturan Sistem → Privasi & Keamanan → Tetap Buka",
+    "On Windows,": "Di Windows,",
+    "More info → Run anyway": "Info lainnya → Tetap jalankan",
+    "Step by step": "Langkah demi langkah",
+    "Documentation": "Dokumentasi",
+    "Privacy": "Privasi",
+    "MIT": "MIT"
+  },
+  "faq": [
+    ["Apa itu iRoof.top?", "Bicaralah dengan orang yang kamu rindukan. Ekspor chat Telegram atau WhatsApp, dan AI akan melanjutkannya dengan gaya satu orang: kata-katanya, balon chat, stiker, GIF, reaksi, dan suaranya. Open source dengan lisensi MIT."],
+    ["Bagaimana cara mengekspor chat?", "Di Telegram Desktop, buka chat, pilih ⋯, lalu Export Chat History. Di WhatsApp, buka chat, pilih Ekspor chat dan sertakan media. Seret folder, file .zip, atau .txt ke halaman iRoof.top."],
+    ["Apakah chat saya keluar dari komputer?", "Proses impor tidak pernah memakai jaringan. Dengan model lokal (Ollama, LM Studio, llama.cpp) dan mode offline aktif, tidak ada yang keluar dari komputermu."],
+    ["AI apa yang dipakai?", "Layanan apa pun yang kompatibel dengan OpenAI: OpenAI, OpenRouter, atau model di komputer atau servermu sendiri, seperti Ollama, LM Studio, atau vLLM. Perangkat lunaknya gratis; model cloud ditagih oleh penyedianya."],
+    ["Bisakah orang lain ikut bercakap di chat ini?", "Bisa. Tautan berbagi (iroof.top/s/nama) memungkinkan orang lain melanjutkan percakapan, dengan PIN dan batasan yang kamu atur. Tautan ini berfungsi di Wi-Fi-mu atau di nama.iroof.top, dan dapat menampilkan kode QR."]
+  ],
+  "ui": {"faq": "Pertanyaan", "language": "Bahasa"}
+}

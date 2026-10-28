@@ -33,12 +33,14 @@ A server can be the relay that apps use for **Internet** sharing, as iroof.top i
 ## A splash page on the main domain
 
 On the main domain the hub serves the relay API, its own share links and the owner's app (behind `ROOFTOP_PASSWORD`).
-iroof.top shows a small splash page at `/` instead, with links to the docs and GitHub:
-[`deploy/landing/index.html`](https://github.com/irooftop/rooftop/blob/main/deploy/landing/index.html), a single
-self-contained file (no scripts, fonts or third-party requests). Unknown `<name>.your.domain` links land there too.
-The app demo inside it is [`demo.svg`](https://github.com/irooftop/rooftop/blob/main/demo.svg), inlined as a `data:` image
-by `python3 scripts/landing-demo.py` (run it after changing `demo.svg`).
-Mount the folder into Caddy (`./landing:/srv/landing:ro`) and route only `/`:
+iroof.top shows a small splash page at `/` instead, with links to the docs and GitHub, in English and 20 other languages
+(`/es/`, `/zh-hans/`, `/ja/`, …; the list is on every page, and `sitemap.xml` lists them with their hreflang alternates).
+[`deploy/landing/index.html`](https://github.com/irooftop/rooftop/blob/main/deploy/landing/index.html) is the English page;
+`python3 scripts/landing-i18n.py` writes the others from it, from the translations in `scripts/landing-i18n/`. Each page is a
+single self-contained file (no scripts, fonts or third-party requests); the questions are native `<details>` elements.
+Unknown `<name>.your.domain` links land there too. The app demo inside it is [`demo.svg`](https://github.com/irooftop/rooftop/blob/main/demo.svg),
+inlined as a `data:` image by `python3 scripts/landing-demo.py` (run it after changing `demo.svg`, then `scripts/landing-i18n.py`).
+Mount the folder into Caddy (`./landing:/srv/landing:ro`) and route `/`, the language folders and `sitemap.xml`:
 
 ```nginx
 your.domain {
@@ -52,6 +54,21 @@ your.domain {
 		root * /srv/landing
 		rewrite * /index.html
 		header Content-Security-Policy "default-src 'none'; style-src 'unsafe-inline'; img-src data:; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
+		file_server
+	}
+	# The other languages: /es/, /zh-hans/, … (the folders written by scripts/landing-i18n.py).
+	@languages {
+		method GET HEAD
+		path_regexp lang ^/(es|zh-hans|hi|ar|fr|bn|pt-br|ru|ur|id|de|ja|tr|ko|vi|it|pl|uk|nl|fa)(/|/index\.html)?$
+		not header Authorization *
+	}
+	handle @languages {
+		root * /srv/landing
+		header Content-Security-Policy "default-src 'none'; style-src 'unsafe-inline'; img-src data:; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
+		file_server
+	}
+	handle /sitemap.xml {
+		root * /srv/landing
 		file_server
 	}
 	# The owner signs in at /owner: the browser asks for the password, keeps sending it, and / opens the app.

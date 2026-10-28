@@ -1,0 +1,40 @@
+{
+  "texts": {
+    "iRoof.top: talk to the people you miss": "iRoof.top : parlez avec les personnes qui vous manquent",
+    "Export a Telegram or WhatsApp chat, and an LLM continues it in the style of the person you miss. Open source, runs on your computer, offline if you like.": "Exportez une conversation Telegram ou WhatsApp, et une IA la poursuit dans le style de la personne qui vous manque. Open source, elle tourne sur votre ordinateur, et hors ligne si vous le souhaitez.",
+    "Talk to the people you miss: an LLM continues your Telegram or WhatsApp chat in their style.": "Parlez avec les personnes qui vous manquent : une IA poursuit votre conversation Telegram ou WhatsApp dans leur style.",
+    "Talk to the people you miss.": "Parlez avec les personnes qui vous manquent.",
+    "Export a Telegram or WhatsApp chat, and an AI continues it in their style. On your computer, offline if you like.": "Exportez une conversation Telegram ou WhatsApp, et une IA la poursuit dans leur style. Sur votre ordinateur, hors ligne si vous le souhaitez.",
+    "Download": "Télécharger",
+    "Docs": "Docs",
+    "What it looks like": "Aperçu",
+    "Someone sits on a sloped roof by the chimney, hugging their knees and looking up at the moon and the stars": "Quelqu'un est assis sur un toit en pente près de la cheminée, les genoux serrés contre lui, et regarde la lune et les étoiles",
+    "A chat continues in the style of a real person, then a friend opens the shared link on a phone": "Une conversation se poursuit dans le style d'une vraie personne, puis un ami ouvre le lien partagé sur son téléphone",
+    "Apple Silicon · .dmg": "Apple Silicon · .dmg",
+    "Intel .dmg": "Intel .dmg",
+    "10 and 11 · .exe": "10 et 11 · .exe",
+    ".msi package": "Paquet .msi",
+    "AppImage · x86-64": "AppImage · x86-64",
+    "Ubuntu .deb": "Ubuntu .deb",
+    "Fedora .rpm": "Fedora .rpm",
+    "As a server": "En serveur",
+    "all options": "toutes les options",
+    "Click to select, then copy": "Cliquez pour sélectionner, puis copiez",
+    "The apps aren't signed yet. On a Mac, open the app once, then": "Les applications ne sont pas encore signées. Sur Mac, ouvrez l'application une fois, puis",
+    "System Settings → Privacy &amp; Security → Open Anyway": "Réglages Système → Confidentialité et sécurité → Ouvrir quand même",
+    "On Windows,": "Sous Windows,",
+    "More info → Run anyway": "Informations supplémentaires → Exécuter quand même",
+    "Step by step": "Pas à pas",
+    "Documentation": "Documentation",
+    "Privacy": "Confidentialité",
+    "MIT": "MIT"
+  },
+  "faq": [
+    ["Qu'est-ce qu'iRoof.top ?", "Parlez avec les personnes qui vous manquent. Vous exportez une conversation Telegram ou WhatsApp, et une IA la poursuit dans le style d'une personne : ses mots, ses bulles, ses autocollants, ses GIF, ses réactions et sa voix. Open source, sous licence MIT."],
+    ["Comment exporter une conversation ?", "Dans Telegram Desktop, ouvrez la conversation, choisissez ⋯ puis Exporter l'historique du chat. Dans WhatsApp, ouvrez la conversation, choisissez Exporter le chat puis incluez les médias. Glissez le dossier, le .zip ou le .txt sur la page d'iRoof.top."],
+    ["Ma conversation quitte-t-elle mon ordinateur ?", "L'importation n'utilise jamais le réseau. Avec un modèle local (Ollama, LM Studio, llama.cpp) et le mode hors ligne activé, rien ne quitte votre ordinateur."],
+    ["Quelle IA utilise-t-il ?", "N'importe quel service compatible OpenAI : OpenAI, OpenRouter, ou un modèle sur votre ordinateur ou votre serveur, comme Ollama, LM Studio ou vLLM. Le logiciel est gratuit ; un modèle dans le cloud est facturé par son fournisseur."],
+    ["Quelqu'un d'autre peut-il parler avec ce chat ?", "Oui. Un lien de partage (iroof.top/s/nom) permet à une autre personne de poursuivre la conversation, avec un PIN et des limites que vous définissez. Il fonctionne sur votre Wi-Fi ou à l'adresse nom.iroof.top, et peut afficher un QR code."]
+  ],
+  "ui": {"faq": "Questions", "language": "Langue"}
+}

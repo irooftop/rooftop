@@ -1,0 +1,40 @@
+{
+  "texts": {
+    "iRoof.top: talk to the people you miss": "iRoof.top: özlediğin insanlarla konuş",
+    "Export a Telegram or WhatsApp chat, and an LLM continues it in the style of the person you miss. Open source, runs on your computer, offline if you like.": "Bir Telegram ya da WhatsApp sohbetini dışa aktar, bir yapay zeka da onu özlediğin kişinin tarzında sürdürsün. Açık kaynak, bilgisayarında çalışır, istersen internetsiz de.",
+    "Talk to the people you miss: an LLM continues your Telegram or WhatsApp chat in their style.": "Özlediğin insanlarla konuş: bir yapay zeka Telegram ya da WhatsApp sohbetini onların tarzında sürdürür.",
+    "Talk to the people you miss.": "Özlediğin insanlarla konuş.",
+    "Export a Telegram or WhatsApp chat, and an AI continues it in their style. On your computer, offline if you like.": "Bir Telegram ya da WhatsApp sohbetini dışa aktar, bir yapay zeka da onların tarzında sürdürsün. Bilgisayarında, istersen internetsiz.",
+    "Download": "İndir",
+    "Docs": "Belgeler",
+    "What it looks like": "Nasıl göründüğü",
+    "Someone sits on a sloped roof by the chimney, hugging their knees and looking up at the moon and the stars": "Bacanağın yanında, eğimli bir çatıda oturan, dizlerini kucaklamış ve aya ile yıldızlara bakan biri",
+    "A chat continues in the style of a real person, then a friend opens the shared link on a phone": "Sohbet gerçek bir insanın tarzında sürer, sonra bir arkadaş paylaşılan bağlantıyı telefonunda açar",
+    "Apple Silicon · .dmg": "Apple Silicon · .dmg",
+    "Intel .dmg": "Intel .dmg",
+    "10 and 11 · .exe": "10 ve 11 · .exe",
+    ".msi package": ".msi paketi",
+    "AppImage · x86-64": "AppImage · x86-64",
+    "Ubuntu .deb": "Ubuntu .deb",
+    "Fedora .rpm": "Fedora .rpm",
+    "As a server": "Sunucu olarak",
+    "all options": "tüm seçenekler",
+    "Click to select, then copy": "Seçmek için tıkla, sonra kopyala",
+    "The apps aren't signed yet. On a Mac, open the app once, then": "Uygulamalar henüz imzalı değil. Mac'te uygulamayı bir kez aç, sonra",
+    "System Settings → Privacy &amp; Security → Open Anyway": "Sistem Ayarları → Gizlilik ve Güvenlik → Yine de Aç",
+    "On Windows,": "Windows'ta,",
+    "More info → Run anyway": "Daha fazla bilgi → Yine de çalıştır",
+    "Step by step": "Adım adım",
+    "Documentation": "Belgeler",
+    "Privacy": "Gizlilik",
+    "MIT": "MIT"
+  },
+  "faq": [
+    ["iRoof.top nedir?", "Özlediğin insanlarla konuş. Bir Telegram ya da WhatsApp sohbetini dışa aktar, bir yapay zeka da onu tek bir kişinin tarzında sürdürsün: sözleri, balonları, çıkartmaları, GIF'leri, tepkileri ve sesiyle. MIT lisansı altında açık kaynak."],
+    ["Sohbeti nasıl dışa aktarırım?", "Telegram Desktop'ta sohbeti aç, ⋯ seçeneğinden Export Chat History'yi seç. WhatsApp'ta sohbeti aç, Sohbeti dışa aktar'ı seçip medyayı ekle. Klasörü, .zip ya da .txt dosyasını iRoof.top sayfasına sürükle."],
+    ["Sohbetim bilgisayarımdan çıkar mı?", "İçe aktarma hiçbir zaman ağı kullanmaz. Yerel bir model (Ollama, LM Studio, llama.cpp) ve çevrimdışı mod açıkken, hiçbir şey bilgisayarından çıkmaz."],
+    ["Hangi yapay zekayı kullanır?", "OpenAI ile uyumlu her hizmet: OpenAI, OpenRouter ya da bilgisayarında veya sunucunda çalışan bir model, örneğin Ollama, LM Studio veya vLLM. Yazılım ücretsizdir; bulut modelinin ücretini sağlayıcısı alır."],
+    ["Başka biri bu sohbetle konuşabilir mi?", "Evet. Bir paylaşım bağlantısı (iroof.top/s/ad), başka birinin konuşmayı sürdürmesine izin verir; PIN'i ve sınırları sen belirlersin. Wi-Fi'ında ya da ad.iroof.top adresinde çalışır ve QR kod gösterebilir."]
+  ],
+  "ui": {"faq": "Sık sorulan sorular", "language": "Dil"}
+}
