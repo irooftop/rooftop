@@ -113,7 +113,7 @@ cask "irooftop" do
   caveats <<~EOS
     iRoof.top is not notarized by Apple yet. Open it once, then allow it in
     System Settings → Privacy & Security → Open Anyway. Step by step:
-    https://irooftop.github.io/rooftop/guide/unsigned-apps
+    https://irooftop.github.io/guide/unsigned-apps
   EOS
 end
 EOF
